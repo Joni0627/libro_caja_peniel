@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Center, MovementType, MovementCategory, User, UserProfile } from '../types';
 import { Trash2, Plus, X, Building, MapPin, User as UserIcon, Phone, Pencil, Mail, Shield, Loader2 } from 'lucide-react';
 import { saveDocument, deleteDocument, updateCurrencies } from '../services/firebaseService';
+import { useToast } from './Toast';
 
 interface MasterDataProps {
   centers: Center[];
@@ -31,6 +32,8 @@ const MasterData: React.FC<MasterDataProps> = ({
 
   // -- Users State --
   const [newUser, setNewUser] = useState<Partial<User>>({ profile: UserProfile.USER });
+
+  const { showToast } = useToast();
 
   // -- Handlers --
   const openModal = () => {
@@ -70,18 +73,20 @@ const MasterData: React.FC<MasterDataProps> = ({
             email: newCenter.email || null
         };
         await saveDocument('centers', data, editingId || undefined);
+        showToast(editingId ? "Centro actualizado" : "Centro creado", 'success');
         closeModal();
       } finally {
         setIsProcessing(false);
       }
     } else {
-        alert("Nombre y Código son obligatorios");
+        showToast("Nombre y Código son obligatorios", 'error');
     }
   };
 
   const deleteCenterHandler = async (id: string) => {
       if(window.confirm("¿Estás seguro de eliminar este centro?")) {
         await deleteDocument('centers', id);
+        showToast("Centro eliminado", 'success');
       }
   };
 
@@ -101,18 +106,20 @@ const MasterData: React.FC<MasterDataProps> = ({
             category: newType.category,
             subCategory: newType.subCategory || null
         }, editingId || undefined);
+        showToast(editingId ? "Tipo actualizado" : "Tipo creado", 'success');
         closeModal();
       } finally {
         setIsProcessing(false);
       }
     } else {
-        alert("El nombre es obligatorio");
+        showToast("El nombre es obligatorio", 'error');
     }
   };
   
   const deleteTypeHandler = async (id: string) => {
     if(window.confirm("¿Estás seguro de eliminar este tipo de movimiento?")) {
         await deleteDocument('movement_types', id);
+        showToast("Tipo eliminado", 'success');
     }
   };
 
@@ -123,6 +130,7 @@ const MasterData: React.FC<MasterDataProps> = ({
       try {
         const updated = [...currencies, newCurrency.toUpperCase()];
         await updateCurrencies(updated);
+        showToast("Moneda agregada", 'success');
         closeModal();
       } finally {
         setIsProcessing(false);
@@ -132,6 +140,7 @@ const MasterData: React.FC<MasterDataProps> = ({
   const deleteCurrencyHandler = async (c: string) => {
       const updated = currencies.filter(cur => cur !== c);
       await updateCurrencies(updated);
+      showToast("Moneda eliminada", 'success');
   };
 
   // --- USER LOGIC ---
@@ -153,22 +162,24 @@ const MasterData: React.FC<MasterDataProps> = ({
                   profile: newUser.profile || UserProfile.USER
              };
              await saveDocument('users', data, editingId || undefined);
+             showToast(editingId ? "Usuario actualizado" : "Usuario creado", 'success');
              closeModal();
           } finally {
              setIsProcessing(false);
           }
       } else {
-          alert("Nombre, Apellido y Email son obligatorios");
+          showToast("Nombre, Apellido y Email son obligatorios", 'error');
       }
   };
 
   const deleteUserHandler = async (id: string) => {
       if (users.length <= 1) {
-          alert("No puedes eliminar el único usuario del sistema.");
+          showToast("No puedes eliminar el único usuario del sistema.", 'error');
           return;
       }
       if(window.confirm("¿Estás seguro de eliminar este usuario?")) {
         await deleteDocument('users', id);
+        showToast("Usuario eliminado", 'success');
       }
   };
 

@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import TransactionList from './components/TransactionList';
 import MasterData from './components/MasterData';
 import Login from './components/Login';
-import { LayoutDashboard, PlusCircle, List, Database, Shield, User as UserIcon, Loader2, AlertTriangle, LogOut } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, List, Database, Shield, User as UserIcon, Loader2, AlertTriangle, LogOut, X } from 'lucide-react';
 import { 
   subscribeToCollection, 
   subscribeToTransactions, 
@@ -16,12 +16,16 @@ import {
   uploadImage
 } from './services/firebaseService';
 import { subscribeToAuth, logout } from './services/authService';
+import { useToast } from './components/Toast';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'new' | 'masters'>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   
+  // -- LOGOUT MODAL STATE --
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
   // -- AUTH STATE --
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -32,6 +36,8 @@ const App: React.FC = () => {
   const [movementTypes, setMovementTypes] = useState<MovementType[]>([]);
   const [currencies, setCurrencies] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+
+  const { showToast } = useToast();
 
   // -- AUTH LISTENER --
   useEffect(() => {
@@ -114,10 +120,11 @@ const App: React.FC = () => {
             attachment: attachmentUrl || null
         };
         await saveDocument('transactions', transactionToSave);
+        showToast("Movimiento registrado correctamente", 'success');
         setActiveTab('list');
     } catch (error) {
         console.error("Error saving transaction:", error);
-        alert("Error al guardar en la nube. Verifique la consola para más detalles.");
+        showToast("Error al guardar en la nube. Verifique la consola.", 'error');
     }
   };
 
@@ -125,17 +132,18 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
         await batchSaveTransactions(importedData);
-        alert(`Se han importado ${importedData.length} registros exitosamente.`);
+        showToast(`Se han importado ${importedData.length} registros exitosamente.`, 'success');
     } catch (error) {
         console.error("Import error:", error);
-        alert("Error en la importación masiva.");
+        showToast("Error en la importación masiva.", 'error');
     } finally {
         setIsLoading(false);
     }
   };
 
-  const handleLogout = async () => {
+  const confirmLogout = async () => {
       await logout();
+      setIsLogoutModalOpen(false);
       setActiveTab('dashboard');
   };
 
@@ -229,7 +237,7 @@ const App: React.FC = () => {
                 <div className="w-px h-6 bg-slate-200 mx-2 hidden sm:block"></div>
 
                 <button 
-                    onClick={handleLogout}
+                    onClick={() => setIsLogoutModalOpen(true)}
                     title="Cerrar Sesión"
                     className="flex items-center gap-2 text-slate-500 hover:text-rose-600 transition-colors p-2 hover:bg-rose-50 rounded-lg"
                 >
@@ -325,6 +333,38 @@ const App: React.FC = () => {
             <span className="text-[10px]">Historial</span>
         </button>
       </div>
+
+      {/* LOGOUT CONFIRMATION MODAL */}
+      {isLogoutModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200 overflow-hidden">
+                <div className="p-6 text-center space-y-4">
+                    <div className="bg-rose-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto text-rose-600">
+                        <LogOut size={32} />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold text-slate-800">¿Cerrar Sesión?</h3>
+                        <p className="text-slate-500 text-sm mt-2">¿Estás seguro de que deseas salir del sistema?</p>
+                    </div>
+                    
+                    <div className="flex gap-3 pt-2">
+                        <button 
+                            onClick={() => setIsLogoutModalOpen(false)}
+                            className="flex-1 py-2.5 px-4 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                        <button 
+                            onClick={confirmLogout}
+                            className="flex-1 py-2.5 px-4 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-colors shadow-sm"
+                        >
+                            Salir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

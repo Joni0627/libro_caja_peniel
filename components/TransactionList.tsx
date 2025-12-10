@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { deleteDocument, saveDocument, uploadImage } from '../services/firebaseService';
 import TransactionForm from './TransactionForm';
+import { useToast } from './Toast';
 
 interface TransactionListProps {
   transactions: Transaction[];
@@ -35,6 +36,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
   const [pdfTargetMonth, setPdfTargetMonth] = useState<string>(new Date().toISOString().slice(0, 7));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { showToast } = useToast();
 
   const getTypeName = (id: string) => movementTypes.find(m => m.id === id)?.name || 'Desconocido';
   const getCenterName = (id: string) => centers.find(c => c.id === id)?.name || 'Desconocido';
@@ -45,9 +47,10 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
       if (window.confirm('¿Estás seguro de que quieres eliminar este movimiento de forma permanente?')) {
           try {
               await deleteDocument('transactions', id);
+              showToast("Registro eliminado correctamente", 'success');
           } catch (error) {
               console.error("Error deleting:", error);
-              alert("Error al eliminar el registro.");
+              showToast("Error al eliminar el registro", 'error');
           }
       }
   };
@@ -68,10 +71,11 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
         };
 
         await saveDocument('transactions', transactionToUpdate, editingTransaction.id);
+        showToast("Registro actualizado correctamente", 'success');
         setEditingTransaction(null); // Close modal
       } catch (error) {
           console.error("Error updating:", error);
-          alert("Error al actualizar el registro.");
+          showToast("Error al actualizar el registro", 'error');
       }
   };
 
@@ -181,7 +185,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
     try {
         const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== '');
         if (lines.length < 2) {
-            alert("El archivo parece estar vacío o no tiene encabezados.");
+            showToast("El archivo parece estar vacío o no tiene encabezados.", 'error');
             return;
         }
 
@@ -223,7 +227,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
         }
 
         if (idxTypeDesc === -1) {
-            alert("Atención: No se encontró la columna 'Descripcion_Tipo_Movimiento' (o similar). La clasificación automática fallará.");
+            showToast("Atención: No se encontró la columna 'Descripcion_Tipo_Movimiento' (o similar). La clasificación automática fallará.", 'info');
         }
 
         // Prepare Matching Logic: Sort types by length DESCENDING
@@ -316,19 +320,19 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                 onImport(newTransactions);
             }
         } else {
-            alert('No se encontraron registros válidos para importar.');
+            showToast('No se encontraron registros válidos para importar.', 'info');
         }
 
     } catch (error) {
         console.error(error);
-        alert('Error crítico al procesar el archivo.');
+        showToast('Error crítico al procesar el archivo.', 'error');
     }
   };
 
   // --- PDF GENERATION LOGIC ---
   const generatePDF = () => {
     const pdfTransactions = transactions.filter(t => t.date.startsWith(pdfTargetMonth));
-    if (pdfTransactions.length === 0) { alert("No hay movimientos para el mes seleccionado."); return; }
+    if (pdfTransactions.length === 0) { showToast("No hay movimientos para el mes seleccionado.", 'info'); return; }
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
@@ -686,8 +690,8 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
             <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={() => setEditingTransaction(null)}></div>
 
             <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-                {/* Modal Panel */}
-                <div className="relative transform overflow-hidden rounded-xl bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl animate-in fade-in zoom-in duration-200">
+                {/* Modal Panel - Adjusted max-width to sm:max-w-lg for better fit */}
+                <div className="relative transform overflow-hidden rounded-xl bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg animate-in fade-in zoom-in duration-200">
                     
                     {/* Header */}
                     <div className="bg-[#1B365D] px-4 py-3 sm:px-6 flex justify-between items-center">
