@@ -209,6 +209,9 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
         const newTransactions: Transaction[] = [];
         let errors = 0;
 
+        // Normalization helper: Lowercase, remove accents
+        const normalize = (str: string) => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i];
             
@@ -222,18 +225,11 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                 
                 let amount = 0;
                 // Handle formats: 1.000,00 (EU/LATAM) vs 1,000.00 (US)
-                // Heuristic: If comma appears after dot, or multiple dots before single comma -> EU/LATAM
                 if (rawAmount.includes(',') && rawAmount.includes('.')) {
-                    // Ambiguous? Assume standard Latam: dots for thousands, comma for decimal
                     amount = parseFloat(rawAmount.replace(/\./g, '').replace(',', '.'));
                 } else if (rawAmount.includes(',')) {
-                    // Only comma -> Decimal separator
                     amount = parseFloat(rawAmount.replace(',', '.'));
                 } else {
-                    // Only dots or nothing -> Number or Dot as Decimal?
-                    // "1.000" could be 1000 or 1.
-                    // Usually in CSV exports, integers don't have separators unless formatted strings.
-                    // Let's assume standard float parse
                     amount = parseFloat(rawAmount);
                 }
 
@@ -252,15 +248,34 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                      dateStr = new Date().toISOString().split('T')[0];
                 }
 
-                // 3. Type Mapping
-                const typeDesc = (cols[idxTypeDesc] || '').toLowerCase().trim();
-                let matchedType = movementTypes.find(mt => 
-                    mt.name.toLowerCase() === typeDesc
-                );
+                // 3. Type Mapping (Improved Logic)
+                const rawTypeDesc = cols[idxTypeDesc] || '';
+                const typeDesc = normalize(rawTypeDesc);
                 
-                if (!matchedType) {
-                    // Try partial match
-                    matchedType = movementTypes.find(mt => mt.name.toLowerCase().includes(typeDesc));
+                // Strategy A: Exact Match
+                let matchedType = movementTypes.find(mt => normalize(mt.name) === typeDesc);
+                
+                // Strategy B: Reverse Containment (CSV contains App Type Name)
+                // Example: CSV="INSTALACIONES (IDEM...)" contains App="INSTALACIONES"
+                if (!matchedType && typeDesc.length > 0) {
+                     const candidates = movementTypes.filter(mt => {
+                         const mtName = normalize(mt.name);
+                         // Length > 2 prevents matching very short substrings falsely
+                         return mtName.length > 2 && typeDesc.includes(mtName);
+                     });
+                     
+                     if (candidates.length > 0) {
+                         // Pick longest match (most specific)
+                         // e.g. Prefer "OFRENDAS MISIONERAS" over "OFRENDAS" if both present
+                         candidates.sort((a, b) => b.name.length - a.name.length);
+                         matchedType = candidates[0];
+                     }
+                }
+
+                // Strategy C: Forward Containment (App Type Name contains CSV text)
+                // Example: App="OFRENDAS" contains CSV="Ofrenda"
+                if (!matchedType && typeDesc.length > 2) {
+                    matchedType = movementTypes.find(mt => normalize(mt.name).includes(typeDesc));
                 }
 
                 // 4. Currency
