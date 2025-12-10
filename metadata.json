@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Copy of Libro de Caja Peniel (MCyM)",
+  "description": "Aplicación de gestión de caja con análisis de recibos mediante IA y reportes PDF.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
