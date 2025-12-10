@@ -11,7 +11,7 @@ interface TransactionListProps {
   onImport: (data: Transaction[]) => void;
   centers: Center[];
   movementTypes: MovementType[];
-  currencies: string[]; // Added to pass to Edit Form
+  currencies: string[];
 }
 
 const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImport, centers, movementTypes, currencies }) => {
@@ -57,8 +57,6 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
 
       try {
         let attachmentUrl = formData.attachment;
-        // If it's a new base64 image (starts with data:), upload it. 
-        // If it's the old URL (starts with http), keep it.
         if (formData.attachment && formData.attachment.startsWith('data:')) {
             const fileName = `receipts/${Date.now()}.jpg`;
             attachmentUrl = await uploadImage(formData.attachment, fileName);
@@ -112,13 +110,11 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
         groups[monthKey].push(t);
     });
 
-    // Return array of groups sorted by month descending
     return Object.entries(groups)
         .sort((a, b) => b[0].localeCompare(a[0]))
         .map(([month, txs]) => ({
             month,
             transactions: txs,
-            // Calculate totals per currency for this month
             totals: txs.reduce((acc, curr) => {
                 const currCode = curr.currency || 'ARS';
                 if (!acc[currCode]) acc[currCode] = { income: 0, expense: 0, balance: 0 };
@@ -137,7 +133,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
   }, [filteredTransactions, movementTypes]);
 
 
-  // CSV Import Logic (unchanged logic, just keeping structure)
+  // CSV Import Logic
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -145,105 +141,112 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      parseCSV(text);
+      parseSheetCSV(text);
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const parseCSV = (csvText: string) => {
+  const parseSheetCSV = (csvText: string) => {
     try {
         const lines = csvText.split('\n');
-        if (lines.length < 2) return;
+        if (lines.length < 2) {
+            alert("El archivo parece estar vacío o no tiene encabezados.");
+            return;
+        }
+
+        // Normalize headers to lowercase and trim spaces
         const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        const isLegacyFormat = headers.includes('id_registro') && headers.includes('monto2');
-        if (isLegacyFormat) { parseLegacyCSV(lines, headers); } else { parseGenericCSV(lines, headers); }
-    } catch (error) { console.error(error); alert('Error al leer el archivo CSV.'); }
-  };
+        
+        // Find specific columns based on user request
+        const idxDate = headers.findIndex(h => h === 'fecha');
+        const idxAmount2 = headers.findIndex(h => h === 'monto2');
+        const idxDetail = headers.findIndex(h => h === 'detalle');
+        const idxCurrency = headers.findIndex(h => h === 'moneda');
+        const idxTypeDesc = headers.findIndex(h => h === 'descripcion_tipo_movimiento');
 
-  const parseLegacyCSV = (lines: string[], headers: string[]) => {
-      const idxId = headers.indexOf('id_registro');
-      const idxDate = headers.indexOf('fecha');
-      const idxCenter = headers.indexOf('centro');
-      const idxTypeDesc = headers.indexOf('descripcion_tipo_movimiento');
-      const idxType = headers.indexOf('tipo_movimiento');
-      const idxDetail = headers.indexOf('detalle');
-      const idxAmount2 = headers.indexOf('monto2');
-      const idxCurrency = headers.indexOf('moneda');
-      const newTransactions: Transaction[] = [];
-      let errors = 0;
+        if (idxDate === -1 || idxAmount2 === -1) {
+            alert('Formato no reconocido. Asegúrate de que las columnas "Fecha" y "Monto2" existan en el CSV.');
+            return;
+        }
 
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const cols = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) || line.split(',');
-        if (cols.length < headers.length) continue;
+        const newTransactions: Transaction[] = [];
+        let errors = 0;
 
-        try {
-            const rawAmount = parseFloat(cols[idxAmount2]);
-            const amount = isNaN(rawAmount) ? 0 : Math.abs(rawAmount);
-            if (amount === 0) continue;
-            const typeNameCSV = (cols[idxTypeDesc] || cols[idxType] || '').toLowerCase();
-            const matchedType = movementTypes.find(mt => typeNameCSV === mt.name.toLowerCase() || typeNameCSV.includes(mt.name.toLowerCase()));
-            const centerNameCSV = (cols[idxCenter] || '').toLowerCase();
-            const matchedCenter = centers.find(c => centerNameCSV === c.name.toLowerCase() || centerNameCSV.includes(c.name.toLowerCase()));
-            let dateStr = cols[idxDate];
-            if (dateStr.includes('/')) {
-                const parts = dateStr.split('/');
-                if (parts.length === 3) dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
-            }
-            newTransactions.push({
-                id: cols[idxId] || crypto.randomUUID(),
-                date: dateStr || new Date().toISOString().split('T')[0],
-                centerId: matchedCenter ? matchedCenter.id : centers[0].id,
-                movementTypeId: matchedType ? matchedType.id : movementTypes[0].id,
-                detail: cols[idxDetail] || 'Migración Histórica',
-                amount: amount,
-                currency: cols[idxCurrency] || 'ARS'
-            });
-        } catch (err) { errors++; }
-      }
-      finishImport(newTransactions, errors);
-  };
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            
+            // Handle CSV splitting respecting quotes is complex, 
+            // but for this specific sheet export, simple comma split often works if no commas in detail.
+            // Better regex split to handle "Text with, comma":
+            const cols = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) || line.split(',');
 
-  const parseGenericCSV = (lines: string[], headers: string[]) => {
-    const idxDate = headers.findIndex(h => h.includes('fecha') || h.includes('date'));
-    const idxType = headers.findIndex(h => h.includes('tipo') || h.includes('type'));
-    const idxDetail = headers.findIndex(h => h.includes('detalle') || h.includes('descrip'));
-    const idxAmount = headers.findIndex(h => h.includes('monto') || h.includes('amount'));
-    if (idxDate === -1 || idxAmount === -1) { alert('CSV inválido.'); return; }
-    const newTransactions: Transaction[] = [];
-    let errors = 0;
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
-        try {
-            const amountVal = parseFloat(cols[idxAmount]);
-            const typeNameFromCSV = idxType !== -1 ? cols[idxType] : '';
-            const matchedType = movementTypes.find(mt => mt.name.toLowerCase().includes(typeNameFromCSV.toLowerCase()));
-            if (!isNaN(amountVal)) {
+            try {
+                // 1. Amount (Monto2)
+                // Handle potential commas as decimals if exported from Spanish Excel
+                let rawAmount = cols[idxAmount2] || '0';
+                // Remove grouping dots if present (e.g. 1.000,00) -> complicated without knowing locale.
+                // Standard CSV often uses dot for decimal. If fails, try replace comma.
+                let amount = parseFloat(rawAmount);
+                if (isNaN(amount)) {
+                    amount = parseFloat(rawAmount.replace(',', '.'));
+                }
+                if (isNaN(amount) || amount === 0) continue; // Skip empty rows
+
+                // 2. Date (Fecha) - Expecting dd/mm/yyyy
+                let dateStr = cols[idxDate];
+                if (dateStr && dateStr.includes('/')) {
+                    const [day, month, year] = dateStr.split('/');
+                    // Convert to ISO YYYY-MM-DD
+                    if (year && month && day) {
+                        dateStr = `${year.trim()}-${month.trim().padStart(2, '0')}-${day.trim().padStart(2, '0')}`;
+                    }
+                } else if (!dateStr.includes('-')) {
+                    // Fallback to today if date is invalid/missing
+                     dateStr = new Date().toISOString().split('T')[0];
+                }
+
+                // 3. Type (Descripcion_Tipo_Movimiento)
+                const typeDesc = (cols[idxTypeDesc] || '').toLowerCase().trim();
+                const matchedType = movementTypes.find(mt => 
+                    mt.name.toLowerCase() === typeDesc || 
+                    mt.name.toLowerCase().includes(typeDesc)
+                );
+                
+                // 4. Currency (Moneda)
+                let currencyCode = (cols[idxCurrency] || 'ARS').toUpperCase().trim();
+                // Clean up if it has symbols like $
+                currencyCode = currencyCode.replace('$', '').trim();
+                if (!currencyCode) currencyCode = 'ARS';
+
                 newTransactions.push({
                     id: crypto.randomUUID(),
-                    date: cols[idxDate],
-                    centerId: centers[0].id,
-                    movementTypeId: matchedType ? matchedType.id : movementTypes[0].id,
-                    detail: idxDetail !== -1 ? cols[idxDetail] : 'Importado',
-                    amount: Math.abs(amountVal),
-                    currency: 'ARS'
+                    date: dateStr,
+                    centerId: centers[0]?.id || 'default', // Default to first center
+                    movementTypeId: matchedType ? matchedType.id : (movementTypes[0]?.id || 'unknown'),
+                    detail: cols[idxDetail] || 'Importado desde Excel',
+                    amount: Math.abs(amount),
+                    currency: currencyCode
                 });
-            }
-        } catch { errors++; }
-    }
-    finishImport(newTransactions, errors);
-  };
 
-  const finishImport = (data: Transaction[], errors: number) => {
-    if (data.length > 0) {
-        if (window.confirm(`Se encontraron ${data.length} registros válidos.${errors > 0 ? ` (Ignorados ${errors} errores)` : ''} ¿Desea importarlos?`)) {
-            onImport(data);
+            } catch (err) {
+                errors++;
+            }
         }
-    } else { alert('No se encontraron registros válidos.'); }
+
+        if (newTransactions.length > 0) {
+            if (window.confirm(`Se encontraron ${newTransactions.length} registros válidos.${errors > 0 ? ` (Ignorados ${errors} errores)` : ''} ¿Desea importarlos?`)) {
+                onImport(newTransactions);
+            }
+        } else {
+            alert('No se encontraron registros válidos para importar.');
+        }
+
+    } catch (error) {
+        console.error(error);
+        alert('Error crítico al procesar el archivo.');
+    }
   };
 
   // --- PDF GENERATION LOGIC ---
@@ -373,7 +376,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                 className="flex items-center justify-center gap-2 bg-slate-50 text-[#1B365D] border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 transition-colors flex-1 sm:flex-none"
             >
                 <Upload className="w-4 h-4" />
-                Importar
+                Importar CSV
             </button>
             <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
 
