@@ -17,26 +17,6 @@ import {
 } from './services/firebaseService';
 import { subscribeToAuth, logout } from './services/authService';
 
-// Default Peniel Logo Component (Fallback)
-const DefaultLogo = () => (
-  <svg viewBox="0 0 100 100" className="w-10 h-10 fill-none" xmlns="http://www.w3.org/2000/svg">
-     {/* Blue P shape simulation */}
-    <path 
-      d="M30 20 C 30 10, 70 10, 70 40 C 70 60, 50 60, 40 60 L 40 90" 
-      stroke="#1B365D" 
-      strokeWidth="12" 
-      strokeLinecap="round"
-      fill="none"
-    />
-    <path 
-      d="M20 40 L 80 40" 
-      stroke="#84cc16" 
-      strokeWidth="8" 
-      strokeLinecap="round" 
-    />
-  </svg>
-);
-
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'new' | 'masters'>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
@@ -47,7 +27,6 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // -- DATA STATE --
-  const [appLogo, setAppLogo] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [centers, setCenters] = useState<Center[]>([]);
   const [movementTypes, setMovementTypes] = useState<MovementType[]>([]);
@@ -89,9 +68,8 @@ const App: React.FC = () => {
             unsubTypes = subscribeToCollection<MovementType>('movement_types', setMovementTypes);
             unsubUsers = subscribeToCollection<User>('users', setUsers);
             
-            unsubConfig = subscribeToConfig((curr, logo) => {
+            unsubConfig = subscribeToConfig((curr, _logo) => {
                 setCurrencies(curr);
-                setAppLogo(logo);
             });
 
         } catch (error: any) {
@@ -180,17 +158,15 @@ const App: React.FC = () => {
   if (isAuthChecking) {
      return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
-            <div className="w-16 h-16 bg-[#1B365D] rounded-xl flex items-center justify-center animate-pulse">
-               <DefaultLogo /> 
-            </div>
-            <p className="text-slate-400 font-medium">Verificando sesión...</p>
+            <h1 className="text-3xl font-bold text-[#1B365D] tracking-tight">PENIEL</h1>
+            <p className="text-slate-400 font-medium text-sm">Cargando sistema...</p>
         </div>
      );
   }
 
   // If not logged in, show Login Screen
   if (!currentUser) {
-      return <Login appLogo={appLogo} />;
+      return <Login />;
   }
 
   // If logged in but data is loading
@@ -198,7 +174,7 @@ const App: React.FC = () => {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
               <Loader2 className="w-10 h-10 text-[#1B365D] animate-spin" />
-              <p className="text-slate-500 font-medium">Cargando datos...</p>
+              <p className="text-slate-500 font-medium">Sincronizando...</p>
           </div>
       );
   }
@@ -230,16 +206,9 @@ const App: React.FC = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 flex items-center justify-center overflow-hidden rounded-lg">
-                {appLogo ? (
-                    <img src={appLogo} alt="Logo" className="w-full h-full object-contain" />
-                ) : (
-                    <DefaultLogo />
-                )}
-              </div>
               <div className="flex flex-col">
-                <h1 className="text-xl font-bold text-[#1B365D] leading-tight tracking-tight">Peniel (MCyM)</h1>
-                <span className="text-xs text-slate-500 font-medium hidden sm:inline">Libro de Caja Digital (Cloud)</span>
+                <h1 className="text-2xl font-bold text-[#1B365D] leading-none tracking-tight">Peniel (MCyM)</h1>
+                <span className="text-xs text-slate-500 font-medium hidden sm:inline mt-1">Libro de Caja Digital</span>
               </div>
             </div>
 
@@ -325,7 +294,6 @@ const App: React.FC = () => {
              movementTypes={movementTypes}
              currencies={currencies}
              users={users}
-             appLogo={appLogo}
           />
         )}
       </main>

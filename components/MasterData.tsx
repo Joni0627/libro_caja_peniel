@@ -1,22 +1,20 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Center, MovementType, MovementCategory, User, UserProfile } from '../types';
-import { Trash2, Plus, X, Building, MapPin, User as UserIcon, Phone, Image as ImageIcon, Pencil, Mail, Shield, Upload, Loader2 } from 'lucide-react';
-import { saveDocument, deleteDocument, updateCurrencies, updateLogoUrl, uploadImage } from '../services/firebaseService';
+import { Trash2, Plus, X, Building, MapPin, User as UserIcon, Phone, Pencil, Mail, Shield, Loader2 } from 'lucide-react';
+import { saveDocument, deleteDocument, updateCurrencies } from '../services/firebaseService';
 
 interface MasterDataProps {
   centers: Center[];
   movementTypes: MovementType[];
   currencies: string[];
   users: User[];
-  appLogo: string | null;
 }
 
 const MasterData: React.FC<MasterDataProps> = ({ 
-  centers, movementTypes, currencies, users, appLogo
+  centers, movementTypes, currencies, users
 }) => {
-  const [activeTab, setActiveTab] = useState<'centers' | 'types' | 'currencies' | 'users' | 'config'>('centers');
+  const [activeTab, setActiveTab] = useState<'centers' | 'types' | 'currencies' | 'users'>('centers');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // -- Edit Mode Tracking --
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -161,34 +159,6 @@ const MasterData: React.FC<MasterDataProps> = ({
       }
   };
 
-
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-        if (file.size > 2 * 1024 * 1024) { 
-            alert("La imagen es demasiado grande. Intenta subir una imagen de menos de 2MB.");
-            return;
-        }
-        
-        setIsProcessing(true);
-        try {
-            // FIX: Use timestamp to force uniqueness and bypass cache
-            const timestamp = Date.now();
-            const fileExtension = file.name.split('.').pop() || 'png';
-            const fileName = `app_config/logo_${timestamp}.${fileExtension}`;
-
-            const url = await uploadImage(file, fileName);
-            await updateLogoUrl(url);
-        } catch (error) {
-            console.error(error);
-            alert("Error al subir imagen");
-        } finally {
-            setIsProcessing(false);
-            if (logoInputRef.current) logoInputRef.current.value = '';
-        }
-    }
-  };
-
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden min-h-[500px]">
       {/* Tabs */}
@@ -217,12 +187,6 @@ const MasterData: React.FC<MasterDataProps> = ({
         >
           Usuarios
         </button>
-        <button 
-          onClick={() => setActiveTab('config')}
-          className={`flex-1 py-4 px-4 text-center font-medium transition-colors whitespace-nowrap ${activeTab === 'config' ? 'bg-[#1B365D] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-        >
-          Configuración
-        </button>
       </div>
 
       <div className="p-6">
@@ -231,17 +195,15 @@ const MasterData: React.FC<MasterDataProps> = ({
                 {activeTab === 'centers' ? 'Gestión de Centros' : 
                  activeTab === 'types' ? 'Tipos de Movimiento' : 
                  activeTab === 'currencies' ? 'Monedas Habilitadas' : 
-                 activeTab === 'users' ? 'Gestión de Usuarios' : 'Configuración de la App'}
+                 'Gestión de Usuarios'}
             </h2>
             
-            {activeTab !== 'config' && (
-                <button 
-                    onClick={openModal}
-                    className="bg-[#84cc16] text-white px-4 py-2 rounded-lg hover:bg-lime-600 flex items-center gap-2 shadow-sm font-medium"
-                >
-                    <Plus size={18} /> Agregar Nuevo
-                </button>
-            )}
+            <button 
+                onClick={openModal}
+                className="bg-[#84cc16] text-white px-4 py-2 rounded-lg hover:bg-lime-600 flex items-center gap-2 shadow-sm font-medium"
+            >
+                <Plus size={18} /> Agregar Nuevo
+            </button>
         </div>
 
         {/* CENTERS LIST */}
@@ -363,68 +325,6 @@ const MasterData: React.FC<MasterDataProps> = ({
             </div>
         )}
 
-        {/* CONFIG (LOGO) */}
-        {activeTab === 'config' && (
-            <div className="max-w-xl">
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
-                    <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                        <ImageIcon className="w-5 h-5 text-[#1B365D]" />
-                        Logo de la Institución
-                    </h3>
-                    
-                    <div className="flex flex-col md:flex-row gap-6 items-center">
-                        <div className="w-32 h-32 bg-white rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden relative">
-                            {isProcessing && (
-                                <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
-                                    <Loader2 className="w-6 h-6 animate-spin text-[#1B365D]" />
-                                </div>
-                            )}
-                            {appLogo ? (
-                                <img src={appLogo} alt="Logo Actual" className="w-full h-full object-contain p-2" />
-                            ) : (
-                                <span className="text-xs text-slate-400 text-center px-2">Sin logo personalizado</span>
-                            )}
-                        </div>
-                        
-                        <div className="flex-1 space-y-3">
-                            <p className="text-sm text-slate-600">
-                                Sube el logo de la iglesia para que aparezca en la cabecera de la aplicación y en los reportes PDF.
-                            </p>
-                            
-                            <div className="flex gap-2">
-                                <button 
-                                    onClick={() => logoInputRef.current?.click()}
-                                    disabled={isProcessing}
-                                    className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm font-medium disabled:opacity-50"
-                                >
-                                    <Upload className="w-4 h-4" />
-                                    Subir Imagen
-                                </button>
-                                {appLogo && (
-                                    <button 
-                                        onClick={async () => {
-                                            if(window.confirm('¿Eliminar logo?')) await updateLogoUrl(null);
-                                        }}
-                                        disabled={isProcessing}
-                                        className="text-rose-500 px-4 py-2 rounded-lg hover:bg-rose-50 transition-colors text-sm font-medium disabled:opacity-50"
-                                    >
-                                        Eliminar
-                                    </button>
-                                )}
-                            </div>
-                            <input 
-                                type="file" 
-                                ref={logoInputRef} 
-                                className="hidden" 
-                                accept="image/png, image/jpeg, image/svg+xml"
-                                onChange={handleLogoUpload}
-                            />
-                            <p className="text-xs text-slate-400">Recomendado: PNG o SVG fondo transparente.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        )}
       </div>
 
       {/* --- MODAL --- */}

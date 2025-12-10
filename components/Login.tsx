@@ -2,30 +2,9 @@ import React, { useState } from 'react';
 import { login } from '../services/authService';
 import { Loader2, Lock, Mail, AlertCircle } from 'lucide-react';
 
-interface LoginProps {
-  appLogo: string | null;
-}
+interface LoginProps {}
 
-// Same Vector Logo as App.tsx for consistency
-const DefaultLogo = () => (
-  <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-    <path 
-      d="M30 20 C 30 10, 70 10, 70 40 C 70 60, 50 60, 40 60 L 40 90" 
-      stroke="#1B365D" 
-      strokeWidth="12" 
-      strokeLinecap="round"
-      fill="none"
-    />
-    <path 
-      d="M20 40 L 80 40" 
-      stroke="#84cc16" 
-      strokeWidth="8" 
-      strokeLinecap="round" 
-    />
-  </svg>
-);
-
-const Login: React.FC<LoginProps> = ({ appLogo }) => {
+const Login: React.FC<LoginProps> = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -57,21 +36,11 @@ const Login: React.FC<LoginProps> = ({ appLogo }) => {
       <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden border border-slate-100">
         
         {/* Header Branding */}
-        <div className="bg-[#1B365D] p-8 text-center relative overflow-hidden">
+        <div className="bg-[#1B365D] p-10 text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-2 bg-[#84cc16]"></div>
           
-          <div className="w-24 h-24 bg-white rounded-2xl mx-auto mb-6 flex items-center justify-center shadow-lg p-3">
-            {appLogo ? (
-                <img src={appLogo} alt="Logo Peniel" className="w-full h-full object-contain" />
-            ) : (
-                <div className="w-16 h-16">
-                    <DefaultLogo />
-                </div>
-            )}
-          </div>
-          
-          <h1 className="text-2xl font-bold text-white tracking-tight">Bienvenido</h1>
-          <p className="text-blue-200 text-sm mt-1">Libro de Caja Peniel (MCyM)</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight mb-2">PENIEL</h1>
+          <p className="text-blue-200 text-sm font-medium tracking-wide uppercase opacity-80">Libro de Caja Digital</p>
         </div>
 
         {/* Login Form */}
