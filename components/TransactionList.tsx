@@ -147,26 +147,62 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Helper to split CSV line handling quotes
+  const parseCSVLine = (text: string, delimiter: string) => {
+    const result = [];
+    let current = '';
+    let inQuote = false;
+    
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (char === '"') {
+            // Check for escaped quote ""
+            if (inQuote && text[i + 1] === '"') {
+                current += '"';
+                i++; // Skip next quote
+            } else {
+                inQuote = !inQuote;
+            }
+        } else if (char === delimiter && !inQuote) {
+            result.push(current);
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    result.push(current);
+    return result;
+  };
+
   const parseSheetCSV = (csvText: string) => {
     try {
-        const lines = csvText.split('\n');
+        const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== '');
         if (lines.length < 2) {
             alert("El archivo parece estar vacío o no tiene encabezados.");
             return;
         }
 
-        // Normalize headers to lowercase and trim spaces
-        const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        // 1. Detect Delimiter (count occurrences in first line)
+        const firstLine = lines[0];
+        const commaCount = (firstLine.match(/,/g) || []).length;
+        const semiCount = (firstLine.match(/;/g) || []).length;
+        const delimiter = semiCount >= commaCount ? ';' : ',';
+
+        console.log(`Detected delimiter: '${delimiter}'`);
+
+        // 2. Parse Headers
+        // Using simple split for headers usually works, but safe to use parser
+        const headers = parseCSVLine(firstLine.toLowerCase(), delimiter).map(h => h.trim());
         
-        // Find specific columns based on user request
+        // 3. Find specific columns
         const idxDate = headers.findIndex(h => h === 'fecha');
-        const idxAmount2 = headers.findIndex(h => h === 'monto2');
+        const idxAmount = headers.findIndex(h => h === 'monto2' || h === 'monto');
         const idxDetail = headers.findIndex(h => h === 'detalle');
         const idxCurrency = headers.findIndex(h => h === 'moneda');
-        const idxTypeDesc = headers.findIndex(h => h === 'descripcion_tipo_movimiento');
+        const idxTypeDesc = headers.findIndex(h => h === 'descripcion_tipo_movimiento' || h === 'tipo_movimiento');
 
-        if (idxDate === -1 || idxAmount2 === -1) {
-            alert('Formato no reconocido. Asegúrate de que las columnas "Fecha" y "Monto2" existan en el CSV.');
+        if (idxDate === -1 || idxAmount === -1) {
+            alert(`No se encontraron las columnas requeridas 'Fecha' y 'Monto2' (o 'Monto'). \nColumnas detectadas: ${headers.join(', ')}`);
             return;
         }
 
@@ -174,63 +210,76 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
         let errors = 0;
 
         for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
+            const line = lines[i];
             
-            // Handle CSV splitting respecting quotes is complex, 
-            // but for this specific sheet export, simple comma split often works if no commas in detail.
-            // Better regex split to handle "Text with, comma":
-            const cols = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) || line.split(',');
+            // Parse line with detected delimiter
+            const cols = parseCSVLine(line, delimiter).map(c => c.trim());
 
             try {
-                // 1. Amount (Monto2)
-                // Handle potential commas as decimals if exported from Spanish Excel
-                let rawAmount = cols[idxAmount2] || '0';
-                // Remove grouping dots if present (e.g. 1.000,00) -> complicated without knowing locale.
-                // Standard CSV often uses dot for decimal. If fails, try replace comma.
-                let amount = parseFloat(rawAmount);
-                if (isNaN(amount)) {
+                // 1. Amount
+                // Clean spaces/symbols
+                let rawAmount = (cols[idxAmount] || '0').replace(/[$\s]/g, ''); 
+                
+                let amount = 0;
+                // Handle formats: 1.000,00 (EU/LATAM) vs 1,000.00 (US)
+                // Heuristic: If comma appears after dot, or multiple dots before single comma -> EU/LATAM
+                if (rawAmount.includes(',') && rawAmount.includes('.')) {
+                    // Ambiguous? Assume standard Latam: dots for thousands, comma for decimal
+                    amount = parseFloat(rawAmount.replace(/\./g, '').replace(',', '.'));
+                } else if (rawAmount.includes(',')) {
+                    // Only comma -> Decimal separator
                     amount = parseFloat(rawAmount.replace(',', '.'));
+                } else {
+                    // Only dots or nothing -> Number or Dot as Decimal?
+                    // "1.000" could be 1000 or 1.
+                    // Usually in CSV exports, integers don't have separators unless formatted strings.
+                    // Let's assume standard float parse
+                    amount = parseFloat(rawAmount);
                 }
-                if (isNaN(amount) || amount === 0) continue; // Skip empty rows
 
-                // 2. Date (Fecha) - Expecting dd/mm/yyyy
+                if (isNaN(amount) || amount === 0) continue; // Skip empty rows or invalid amounts
+
+                // 2. Date
                 let dateStr = cols[idxDate];
+                // Handle dd/mm/yyyy
                 if (dateStr && dateStr.includes('/')) {
-                    const [day, month, year] = dateStr.split('/');
-                    // Convert to ISO YYYY-MM-DD
-                    if (year && month && day) {
-                        dateStr = `${year.trim()}-${month.trim().padStart(2, '0')}-${day.trim().padStart(2, '0')}`;
+                    const parts = dateStr.split('/');
+                    if (parts.length === 3) {
+                        // dd/mm/yyyy -> yyyy-mm-dd
+                        dateStr = `${parts[2].trim()}-${parts[1].trim().padStart(2, '0')}-${parts[0].trim().padStart(2, '0')}`;
                     }
-                } else if (!dateStr.includes('-')) {
-                    // Fallback to today if date is invalid/missing
+                } else if (!dateStr || dateStr.trim() === '') {
                      dateStr = new Date().toISOString().split('T')[0];
                 }
 
-                // 3. Type (Descripcion_Tipo_Movimiento)
+                // 3. Type Mapping
                 const typeDesc = (cols[idxTypeDesc] || '').toLowerCase().trim();
-                const matchedType = movementTypes.find(mt => 
-                    mt.name.toLowerCase() === typeDesc || 
-                    mt.name.toLowerCase().includes(typeDesc)
+                let matchedType = movementTypes.find(mt => 
+                    mt.name.toLowerCase() === typeDesc
                 );
                 
-                // 4. Currency (Moneda)
+                if (!matchedType) {
+                    // Try partial match
+                    matchedType = movementTypes.find(mt => mt.name.toLowerCase().includes(typeDesc));
+                }
+
+                // 4. Currency
                 let currencyCode = (cols[idxCurrency] || 'ARS').toUpperCase().trim();
-                // Clean up if it has symbols like $
-                currencyCode = currencyCode.replace('$', '').trim();
-                if (!currencyCode) currencyCode = 'ARS';
+                currencyCode = currencyCode.replace(/[^A-Z]/g, ''); // Keep only letters
+                if (!currencyCode || currencyCode.length !== 3) currencyCode = 'ARS';
 
                 newTransactions.push({
                     id: crypto.randomUUID(),
                     date: dateStr,
-                    centerId: centers[0]?.id || 'default', // Default to first center
+                    centerId: centers[0]?.id || 'default', 
                     movementTypeId: matchedType ? matchedType.id : (movementTypes[0]?.id || 'unknown'),
-                    detail: cols[idxDetail] || 'Importado desde Excel',
-                    amount: Math.abs(amount),
+                    detail: cols[idxDetail] || 'Importado desde CSV',
+                    amount: Math.abs(amount), // Ensure positive
                     currency: currencyCode
                 });
 
             } catch (err) {
+                console.warn("Row error:", err);
                 errors++;
             }
         }
