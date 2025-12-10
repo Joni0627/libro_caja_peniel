@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { Transaction, Currency, Center, MovementType } from '../types';
-import { Camera, Loader2, Sparkles, X } from 'lucide-react';
-import { analyzeReceiptImage } from '../services/geminiService';
+import { Transaction, Center, MovementType } from '../types';
+import { Camera, Loader2, X } from 'lucide-react';
+// import { analyzeReceiptImage } from '../services/geminiService'; // Desactivado
 
 interface TransactionFormProps {
   onSave: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
@@ -20,7 +20,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, cen
   const [currency, setCurrency] = useState<string>(currencies[0] || 'ARS');
   const [attachment, setAttachment] = useState<string | undefined>(undefined);
   
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -31,25 +30,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, cen
       reader.onloadend = async () => {
         const base64 = reader.result as string;
         setAttachment(base64);
-        
-        // Trigger AI Analysis
-        setIsAnalyzing(true);
-        try {
-          const result = await analyzeReceiptImage(base64);
-          if (result) {
-            if (result.date) setDate(result.date);
-            if (result.amount) setAmount(result.amount.toString());
-            if (result.detail) setDetail(result.detail);
-            if (result.currency && currencies.includes(result.currency)) {
-                setCurrency(result.currency);
-            }
-          }
-        } catch (err) {
-          console.error("Failed to analyze", err);
-          alert("No se pudo analizar la imagen automáticamente, por favor ingrese los datos manualmente.");
-        } finally {
-          setIsAnalyzing(false);
-        }
+        // AI Analysis removed
       };
       reader.readAsDataURL(file);
     }
@@ -84,12 +65,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, cen
     <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto space-y-6 border-t-4 border-[#1B365D]">
       <div className="flex justify-between items-center border-b pb-4">
         <h2 className="text-2xl font-bold text-[#1B365D]">Registrar Movimiento</h2>
-        {isAnalyzing && (
-            <div className="flex items-center text-[#84cc16] animate-pulse text-sm font-medium">
-                <Sparkles className="w-4 h-4 mr-2" />
-                Analizando recibo...
-            </div>
-        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -185,7 +160,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, cen
                     <Camera className="w-6 h-6 text-[#1B365D]" />
                 </div>
                 <p className="text-sm text-slate-500 font-medium">Toca para tomar foto o subir archivo</p>
-                <p className="text-xs text-slate-400 mt-1">La IA intentará leer los datos automáticamente</p>
                 <input 
                     type="file" 
                     accept="image/*" 
@@ -220,18 +194,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, cen
         </button>
         <button 
             type="submit" 
-            disabled={isAnalyzing || isSaving}
+            disabled={isSaving}
             className="flex-1 py-3 px-4 rounded-lg bg-[#1B365D] text-white font-medium hover:bg-[#152a48] transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
         >
             {isSaving ? (
                 <>
                     <Loader2 className="w-5 h-5 animate-spin" />
                     Guardando...
-                </>
-            ) : isAnalyzing ? (
-                <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Analizando...
                 </>
             ) : (
                 'Guardar Movimiento'
