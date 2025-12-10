@@ -436,6 +436,14 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
     setIsPdfModalOpen(false);
   };
 
+  // Helper for formatting month correctly without timezone offset issues
+  const formatGroupDate = (yearMonth: string, includeYear: boolean) => {
+      const [year, month] = yearMonth.split('-');
+      // Construct date using local time components to avoid UTC offset shifts
+      const date = new Date(parseInt(year), parseInt(month) - 1, 1); 
+      return date.toLocaleString('es-ES', { month: 'long', ...(includeYear && { year: 'numeric' }) });
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
       
@@ -590,7 +598,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                     <tbody key={group.month} className="border-b last:border-0">
                         <tr className="bg-slate-50/50">
                             <td colSpan={7} className="px-6 py-2 text-xs font-bold text-[#1B365D] uppercase tracking-wider border-b border-slate-100">
-                                {new Date(group.month + '-01').toLocaleString('es-ES', { month: 'long', year: 'numeric' })}
+                                {formatGroupDate(group.month, true)}
                             </td>
                         </tr>
 
@@ -646,7 +654,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
 
                         <tr className="bg-[#1B365D]/5 border-t border-[#1B365D]/10">
                             <td colSpan={4} className="px-6 py-3 text-right font-bold text-[#1B365D] text-xs uppercase tracking-wider">
-                                Balance {new Date(group.month + '-01').toLocaleString('es-ES', { month: 'long' })}
+                                Balance {formatGroupDate(group.month, false)}
                             </td>
                             <td colSpan={3} className="px-6 py-3 text-right">
                                 <div className="flex flex-col items-end gap-1">
