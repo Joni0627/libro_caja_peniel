@@ -476,22 +476,26 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                 </button>
             )}
 
-            <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center justify-center gap-2 bg-slate-50 text-[#1B365D] border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 transition-colors flex-1 sm:flex-none"
-            >
-                <Upload className="w-4 h-4" />
-                Importar CSV
-            </button>
-            <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
+            {isAdmin && (
+                <>
+                    <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center justify-center gap-2 bg-slate-50 text-[#1B365D] border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 transition-colors flex-1 sm:flex-none"
+                    >
+                        <Upload className="w-4 h-4" />
+                        Importar CSV
+                    </button>
+                    <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
 
-            <button 
-                onClick={() => setIsPdfModalOpen(true)}
-                className="flex items-center justify-center gap-2 bg-[#1B365D] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#152a48] transition-colors shadow-sm flex-1 sm:flex-none"
-            >
-                <FileText className="w-4 h-4" />
-                Planilla PDF
-            </button>
+                    <button 
+                        onClick={() => setIsPdfModalOpen(true)}
+                        className="flex items-center justify-center gap-2 bg-[#1B365D] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#152a48] transition-colors shadow-sm flex-1 sm:flex-none"
+                    >
+                        <FileText className="w-4 h-4" />
+                        Planilla PDF
+                    </button>
+                </>
+            )}
         </div>
       </div>
 

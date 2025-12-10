@@ -266,9 +266,6 @@ const App: React.FC = () => {
                     <p className="text-sm font-bold leading-none">{currentUser.name} {currentUser.lastName}</p>
                 </div>
             </div>
-            {!isAdmin && (
-                <span className="text-xs bg-slate-200 px-2 py-1 rounded text-slate-500 font-medium">Modo Lectura</span>
-            )}
         </div>
 
 
