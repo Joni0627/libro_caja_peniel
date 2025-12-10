@@ -1,16 +1,18 @@
+// Fix: Add reference to vite/client types to resolve 'env' on ImportMeta
+/// <reference types="vite/client" />
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 
-// Your web app's Firebase configuration
+// Usamos variables de entorno de Vite (import.meta.env)
 const firebaseConfig = {
-  apiKey: "AIzaSyB32kxiS6Xol1d1qZNNdFshI_iEDtdu888",
-  authDomain: "librodecajapeniel.firebaseapp.com",
-  projectId: "librodecajapeniel",
-  storageBucket: "librodecajapeniel.firebasestorage.app",
-  messagingSenderId: "1024131412182",
-  appId: "1:1024131412182:web:0814c47189e8509a9b1977"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Initialize Firebase

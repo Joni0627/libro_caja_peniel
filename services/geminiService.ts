@@ -1,9 +1,13 @@
+// Fix: Add reference to vite/client types to resolve 'env' on ImportMeta
+/// <reference types="vite/client" />
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Fix: Use import.meta.env for Vite instead of process.env to prevent "process is not defined" error
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+const ai = new GoogleGenAI({ apiKey });
 
 export const analyzeReceiptImage = async (base64Image: string) => {
-  if (!process.env.API_KEY) {
+  if (!apiKey) {
     console.warn("API Key missing for Gemini");
     return null;
   }
