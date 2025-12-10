@@ -78,9 +78,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   };
 
   const isEditing = !!initialData;
+  
+  // Conditional styling: If editing (in modal), remove card styles (shadow, borders, etc) and rely on parent container
+  const containerClasses = isEditing 
+    ? "space-y-6 p-6" 
+    : "bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto space-y-6 border-t-4 border-[#1B365D]";
 
   return (
-    <form onSubmit={handleSubmit} className={`bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto space-y-6 ${!isEditing ? 'border-t-4 border-[#1B365D]' : ''}`}>
+    <form onSubmit={handleSubmit} className={containerClasses}>
       {!isEditing && (
         <div className="flex justify-between items-center border-b pb-4">
             <h2 className="text-2xl font-bold text-[#1B365D]">Registrar Movimiento</h2>
