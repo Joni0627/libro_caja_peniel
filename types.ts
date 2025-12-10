@@ -1,3 +1,4 @@
+
 export enum Currency {
   CLP = 'CLP',
   USD = 'USD',
@@ -37,6 +38,15 @@ export interface Transaction {
   amount: number;
   currency: string; // Changed from enum to string to support dynamic currencies
   attachment?: string; // Base64 string of the image
+  excludeFromPdf?: boolean; // New: If true, ignore in PDF report
+}
+
+export interface Annotation {
+  id: string;
+  date: string;
+  title: string;
+  description: string;
+  createdAt: number;
 }
 
 export interface DashboardStats {

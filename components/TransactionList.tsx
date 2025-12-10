@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Transaction, MovementCategory, Center, MovementType } from '../types';
-import { FileText, Filter, ArrowUpRight, ArrowDownRight, Eye, Upload, Calendar, X, Download, Search, ChevronDown, Trash2, Pencil } from 'lucide-react';
+import { FileText, Filter, ArrowUpRight, ArrowDownRight, Eye, Upload, Calendar, X, Download, Search, ChevronDown, Trash2, Pencil, Plus, EyeOff } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { deleteDocument, saveDocument, uploadImage } from '../services/firebaseService';
@@ -13,9 +13,12 @@ interface TransactionListProps {
   centers: Center[];
   movementTypes: MovementType[];
   currencies: string[];
+  // New prop to handle creation from within the list component (via modal)
+  onSaveNew: (data: Omit<Transaction, 'id'>) => Promise<void>;
+  isAdmin: boolean;
 }
 
-const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImport, centers, movementTypes, currencies }) => {
+const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImport, centers, movementTypes, currencies, onSaveNew, isAdmin }) => {
   // --- VIEW FILTERS STATE ---
   const [filterMode, setFilterMode] = useState<'month' | 'range'>('month');
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -28,8 +31,12 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTypeId, setFilterTypeId] = useState('');
 
-  // --- EDIT / DELETE STATE ---
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  // --- MODAL STATE (Create or Edit) ---
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    mode: 'create' | 'edit';
+    data?: Transaction;
+  }>({ isOpen: false, mode: 'create' });
 
   // --- PDF MODAL STATE ---
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
@@ -55,27 +62,43 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
       }
   };
 
-  const handleUpdate = async (formData: Omit<Transaction, 'id'>) => {
-      if (!editingTransaction) return;
+  const handleOpenEdit = (t: Transaction) => {
+      setModalState({ isOpen: true, mode: 'edit', data: t });
+  };
 
+  const handleOpenCreate = () => {
+      setModalState({ isOpen: true, mode: 'create' });
+  };
+
+  const handleCloseModal = () => {
+      setModalState(prev => ({ ...prev, isOpen: false }));
+  };
+
+  const handleFormSubmit = async (formData: Omit<Transaction, 'id'>) => {
       try {
-        let attachmentUrl = formData.attachment;
-        if (formData.attachment && formData.attachment.startsWith('data:')) {
-            const fileName = `receipts/${Date.now()}.jpg`;
-            attachmentUrl = await uploadImage(formData.attachment, fileName);
+        if (modalState.mode === 'create') {
+            await onSaveNew(formData);
+        } else if (modalState.mode === 'edit' && modalState.data) {
+            // Update logic locally or pass to parent? 
+            // The previous version had logic here. Let's keep update logic here.
+            let attachmentUrl = formData.attachment;
+            if (formData.attachment && formData.attachment.startsWith('data:')) {
+                const fileName = `receipts/${Date.now()}.jpg`;
+                attachmentUrl = await uploadImage(formData.attachment, fileName);
+            }
+
+            const transactionToUpdate = {
+                ...formData,
+                attachment: attachmentUrl || null
+            };
+
+            await saveDocument('transactions', transactionToUpdate, modalState.data.id);
+            showToast("Registro actualizado correctamente", 'success');
         }
-
-        const transactionToUpdate = {
-            ...formData,
-            attachment: attachmentUrl || null
-        };
-
-        await saveDocument('transactions', transactionToUpdate, editingTransaction.id);
-        showToast("Registro actualizado correctamente", 'success');
-        setEditingTransaction(null); // Close modal
+        handleCloseModal();
       } catch (error) {
-          console.error("Error updating:", error);
-          showToast("Error al actualizar el registro", 'error');
+          console.error("Error saving:", error);
+          showToast("Error al guardar el registro", 'error');
       }
   };
 
@@ -208,12 +231,8 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
         const idxDetail = headers.findIndex(h => h === 'detalle');
         const idxCurrency = headers.findIndex(h => h === 'moneda');
         
-        // FIX: Search specifically for the description column first.
-        // The user's CSV has both 'Tipo_Movimiento' (IDs) and 'Descripcion_Tipo_Movimiento' (Text).
-        // We must prioritize the text column.
         let idxTypeDesc = headers.findIndex(h => h === 'descripcion_tipo_movimiento');
         
-        // Fallback if the specific description column is not found
         if (idxTypeDesc === -1) {
              idxTypeDesc = headers.findIndex(h => 
                 h === 'tipo_movimiento' || 
@@ -230,8 +249,6 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
             showToast("Atención: No se encontró la columna 'Descripcion_Tipo_Movimiento' (o similar). La clasificación automática fallará.", 'info');
         }
 
-        // Prepare Matching Logic: Sort types by length DESCENDING
-        // This ensures "OFRENDAS MISIONERAS" is checked before "OFRENDAS"
         const sortedTypes = [...movementTypes].sort((a, b) => b.name.length - a.name.length);
 
         const newTransactions: Transaction[] = [];
@@ -239,17 +256,11 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
 
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i];
-            
-            // Parse line with detected delimiter
             const cols = parseCSVLine(line, delimiter).map(c => c.trim());
 
             try {
-                // 1. Amount
-                // Clean spaces/symbols
                 let rawAmount = (cols[idxAmount] || '0').replace(/[$\s]/g, ''); 
-                
                 let amount = 0;
-                // Handle formats: 1.000,00 (EU/LATAM) vs 1,000.00 (US)
                 if (rawAmount.includes(',') && rawAmount.includes('.')) {
                     amount = parseFloat(rawAmount.replace(/\./g, '').replace(',', '.'));
                 } else if (rawAmount.includes(',')) {
@@ -258,45 +269,32 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                     amount = parseFloat(rawAmount);
                 }
 
-                if (isNaN(amount) || amount === 0) continue; // Skip empty rows or invalid amounts
+                if (isNaN(amount) || amount === 0) continue; 
 
-                // 2. Date
                 let dateStr = cols[idxDate];
-                // Handle dd/mm/yyyy
                 if (dateStr && dateStr.includes('/')) {
                     const parts = dateStr.split('/');
                     if (parts.length === 3) {
-                        // dd/mm/yyyy -> yyyy-mm-dd
                         dateStr = `${parts[2].trim()}-${parts[1].trim().padStart(2, '0')}-${parts[0].trim().padStart(2, '0')}`;
                     }
                 } else if (!dateStr || dateStr.trim() === '') {
                      dateStr = new Date().toISOString().split('T')[0];
                 }
 
-                // 3. Type Mapping (Revised Logic)
                 const rawTypeDesc = idxTypeDesc !== -1 ? (cols[idxTypeDesc] || '') : '';
                 const csvTypeNorm = normalize(rawTypeDesc);
                 
                 let matchedType: MovementType | undefined;
 
                 if (csvTypeNorm) {
-                    // Check containment: Does the CSV text CONTAIN the App Type Name?
-                    // OR does the App Type Name EQUAL the CSV text?
-                    // Because we sorted `sortedTypes` by length descending:
-                    // 1. CSV="OFRENDAS MISIONERAS", App="OFRENDAS MISIONERAS" -> Match (contains/equals) -> Found.
-                    // 2. CSV="OFRENDAS MISIONERAS", App="OFRENDAS" -> (Matches later, but first loop hits longest).
-                    // 3. CSV="INSTALACIONES (IDEM...)", App="INSTALACIONES" -> Match (contains).
-                    
                     matchedType = sortedTypes.find(mt => {
                         const mtNameNorm = normalize(mt.name);
-                        // Check if CSV description includes the app type name
                         return csvTypeNorm.includes(mtNameNorm);
                     });
                 }
 
-                // 4. Currency
                 let currencyCode = (cols[idxCurrency] || 'ARS').toUpperCase().trim();
-                currencyCode = currencyCode.replace(/[^A-Z]/g, ''); // Keep only letters
+                currencyCode = currencyCode.replace(/[^A-Z]/g, ''); 
                 if (!currencyCode || currencyCode.length !== 3) currencyCode = 'ARS';
 
                 newTransactions.push({
@@ -305,8 +303,9 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                     centerId: centers[0]?.id || 'default', 
                     movementTypeId: matchedType ? matchedType.id : (movementTypes[0]?.id || 'unknown'),
                     detail: cols[idxDetail] || rawTypeDesc || 'Importado desde CSV',
-                    amount: Math.abs(amount), // Ensure positive
-                    currency: currencyCode
+                    amount: Math.abs(amount),
+                    currency: currencyCode,
+                    excludeFromPdf: false // Default to include
                 });
 
             } catch (err) {
@@ -331,8 +330,16 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
 
   // --- PDF GENERATION LOGIC ---
   const generatePDF = () => {
-    const pdfTransactions = transactions.filter(t => t.date.startsWith(pdfTargetMonth));
-    if (pdfTransactions.length === 0) { showToast("No hay movimientos para el mes seleccionado.", 'info'); return; }
+    // UPDATED: Filter logic to exclude transactions with excludeFromPdf === true
+    const pdfTransactions = transactions.filter(t => 
+        t.date.startsWith(pdfTargetMonth) && 
+        !t.excludeFromPdf
+    );
+
+    if (pdfTransactions.length === 0) { 
+        showToast("No hay movimientos válidos para el mes seleccionado (Verifique si los registros están marcados para incluir en planilla).", 'info'); 
+        return; 
+    }
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
@@ -440,10 +447,8 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
     setIsPdfModalOpen(false);
   };
 
-  // Helper for formatting month correctly without timezone offset issues
   const formatGroupDate = (yearMonth: string, includeYear: boolean) => {
       const [year, month] = yearMonth.split('-');
-      // Construct date using local time components to avoid UTC offset shifts
       const date = new Date(parseInt(year), parseInt(month) - 1, 1); 
       return date.toLocaleString('es-ES', { month: 'long', ...(includeYear && { year: 'numeric' }) });
   };
@@ -459,6 +464,18 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
         </h3>
         
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            
+            {/* NEW TRANSACTION BUTTON - MOVED HERE */}
+            {isAdmin && (
+                <button 
+                    onClick={handleOpenCreate}
+                    className="flex items-center justify-center gap-2 bg-[#84cc16] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-lime-600 transition-colors shadow-sm flex-1 sm:flex-none"
+                >
+                    <Plus className="w-4 h-4" />
+                    Nuevo Movimiento
+                </button>
+            )}
+
             <button 
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center justify-center gap-2 bg-slate-50 text-[#1B365D] border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 transition-colors flex-1 sm:flex-none"
@@ -480,8 +497,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
 
       {/* TOOLBAR: LARGE FILTERS */}
       <div className="bg-white p-4 border-b border-slate-200 grid grid-cols-1 md:grid-cols-12 gap-4">
-        
-        {/* Date Filter Section (Larger) */}
+        {/* Date Filter Section */}
         <div className="md:col-span-4 flex flex-col gap-2">
             <div className="flex bg-white border border-slate-200 p-1 rounded-lg">
                 <button 
@@ -497,7 +513,6 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                     RANGO
                 </button>
             </div>
-            
             <div className="px-1 pb-1">
                 {filterMode === 'month' ? (
                     <div className="relative">
@@ -531,7 +546,6 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
 
         {/* Content Filters */}
         <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
-             {/* Type Filter */}
              <div className="relative">
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-1 block">Tipo Movimiento</label>
                 <div className="relative">
@@ -547,7 +561,6 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                 </div>
              </div>
 
-             {/* Detail Search */}
              <div className="relative">
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-1 block">Buscar Detalle</label>
                 <div className="relative">
@@ -570,7 +583,6 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                 </div>
              </div>
         </div>
-
       </div>
 
       {/* TABLE */}
@@ -612,12 +624,19 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                                 <tr key={t.id} className="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 group">
                                     <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{t.date}</td>
                                     <td className="px-6 py-4">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase ${
-                                            income ? 'bg-lime-100 text-lime-800' : 'bg-rose-100 text-rose-800'
-                                        }`}>
-                                            {income ? <ArrowUpRight className="w-3 h-3 mr-1" /> : <ArrowDownRight className="w-3 h-3 mr-1" />}
-                                            {getTypeName(t.movementTypeId)}
-                                        </span>
+                                        <div className="flex flex-col">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase w-fit ${
+                                                income ? 'bg-lime-100 text-lime-800' : 'bg-rose-100 text-rose-800'
+                                            }`}>
+                                                {income ? <ArrowUpRight className="w-3 h-3 mr-1" /> : <ArrowDownRight className="w-3 h-3 mr-1" />}
+                                                {getTypeName(t.movementTypeId)}
+                                            </span>
+                                            {t.excludeFromPdf && (
+                                                <span className="flex items-center gap-1 text-[10px] text-slate-400 mt-1">
+                                                    <EyeOff size={10} /> No en planilla
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 text-xs font-medium text-slate-500">{getCenterName(t.centerId)}</td>
                                     <td className="px-6 py-4 max-w-xs truncate" title={t.detail}>{t.detail}</td>
@@ -637,7 +656,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                             <button 
-                                                onClick={() => setEditingTransaction(t)}
+                                                onClick={() => handleOpenEdit(t)}
                                                 className="p-1.5 text-slate-400 hover:text-[#1B365D] hover:bg-slate-100 rounded transition-colors" 
                                                 title="Editar"
                                             >
@@ -683,26 +702,25 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
         </table>
       </div>
 
-      {/* --- EDIT MODAL --- */}
-      {editingTransaction && (
+      {/* --- UNIFIED MODAL (CREATE OR EDIT) --- */}
+      {modalState.isOpen && (
          <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
             {/* Backdrop */}
-            <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={() => setEditingTransaction(null)}></div>
+            <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={handleCloseModal}></div>
 
             <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-                {/* Modal Panel - Adjusted max-width to sm:max-w-lg for better fit */}
                 <div className="relative transform overflow-hidden rounded-xl bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg animate-in fade-in zoom-in duration-200">
                     
                     {/* Header */}
                     <div className="bg-[#1B365D] px-4 py-3 sm:px-6 flex justify-between items-center">
                         <h3 className="text-white font-bold text-lg flex items-center gap-2" id="modal-title">
-                            <Pencil className="w-5 h-5" />
-                            Editar Movimiento
+                            {modalState.mode === 'create' ? <Plus className="w-5 h-5"/> : <Pencil className="w-5 h-5" />}
+                            {modalState.mode === 'create' ? 'Nuevo Movimiento' : 'Editar Movimiento'}
                         </h3>
                         <button 
                             type="button" 
                             className="text-white/80 hover:text-white transition-colors rounded-md p-1 hover:bg-white/10"
-                            onClick={() => setEditingTransaction(null)}
+                            onClick={handleCloseModal}
                         >
                             <span className="sr-only">Cerrar</span>
                             <X className="w-5 h-5" />
@@ -712,12 +730,12 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                     {/* Content */}
                     <div className="bg-white">
                         <TransactionForm 
-                            onSave={handleUpdate}
-                            onCancel={() => setEditingTransaction(null)}
+                            onSave={handleFormSubmit}
+                            onCancel={handleCloseModal}
                             centers={centers}
                             movementTypes={movementTypes}
                             currencies={currencies}
-                            initialData={editingTransaction}
+                            initialData={modalState.mode === 'edit' ? modalState.data : undefined}
                         />
                     </div>
                 </div>

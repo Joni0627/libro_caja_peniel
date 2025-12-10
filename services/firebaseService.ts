@@ -27,6 +27,7 @@ const COLLECTIONS = {
   CENTERS: 'centers',
   MOVEMENT_TYPES: 'movement_types',
   USERS: 'users',
+  ANNOTATIONS: 'annotations',
   CONFIG: 'app_config' // For currencies and logo
 };
 

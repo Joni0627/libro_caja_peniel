@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Transaction, Center, MovementType } from '../types';
-import { Camera, Loader2, X, Save } from 'lucide-react';
+import { Camera, Loader2, X, Save, FileText } from 'lucide-react';
 
 interface TransactionFormProps {
   onSave: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
@@ -23,6 +23,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [currency, setCurrency] = useState<string>(initialData?.currency || (currencies[0] || 'ARS'));
   const [attachment, setAttachment] = useState<string | undefined>(initialData?.attachment);
   
+  // Default: Include in PDF (excludeFromPdf = false). 
+  // If editing, we invert the stored value (because stored is 'exclude', UI is 'include')
+  const [includeInPdf, setIncludeInPdf] = useState(initialData ? !initialData.excludeFromPdf : true);
+  
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -36,6 +40,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         setAmount(initialData.amount.toString());
         setCurrency(initialData.currency);
         setAttachment(initialData.attachment);
+        setIncludeInPdf(!initialData.excludeFromPdf);
     }
   }, [initialData]);
 
@@ -62,7 +67,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           detail,
           amount: parseFloat(amount),
           currency,
-          attachment
+          attachment,
+          excludeFromPdf: !includeInPdf // Invert UI logic for storage
         });
     } catch (error) {
         // Error handling done in parent
@@ -93,6 +99,33 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* PDF Toggle - New Requirement */}
+        <div className="md:col-span-2 bg-slate-50 p-4 rounded-lg border border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-full ${includeInPdf ? 'bg-[#1B365D] text-white' : 'bg-slate-200 text-slate-400'}`}>
+                    <FileText size={20} />
+                </div>
+                <div>
+                    <span className="block text-sm font-bold text-slate-700">Tener en cuenta para planilla</span>
+                    <span className="block text-xs text-slate-500">
+                        {includeInPdf 
+                            ? "Este movimiento se sumará en el reporte PDF mensual." 
+                            : "Este movimiento NO aparecerá en el reporte PDF."}
+                    </span>
+                </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                    type="checkbox" 
+                    className="sr-only peer"
+                    checked={includeInPdf}
+                    onChange={(e) => setIncludeInPdf(e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1B365D]"></div>
+            </label>
+        </div>
+
         {/* Date */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Fecha</label>

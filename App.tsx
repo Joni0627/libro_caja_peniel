@@ -4,8 +4,9 @@ import TransactionForm from './components/TransactionForm';
 import Dashboard from './components/Dashboard';
 import TransactionList from './components/TransactionList';
 import MasterData from './components/MasterData';
+import Annotations from './components/Annotations';
 import Login from './components/Login';
-import { LayoutDashboard, PlusCircle, List, Database, Shield, User as UserIcon, Loader2, AlertTriangle, LogOut, X } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, List, Database, Shield, User as UserIcon, Loader2, AlertTriangle, LogOut, X, ClipboardList } from 'lucide-react';
 import { 
   subscribeToCollection, 
   subscribeToTransactions, 
@@ -19,7 +20,8 @@ import { subscribeToAuth, logout } from './services/authService';
 import { useToast } from './components/Toast';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'new' | 'masters'>('dashboard');
+  // Changed default types for tab to include annotations and remove 'new' (handled in list)
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'annotations' | 'masters'>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   
@@ -121,7 +123,7 @@ const App: React.FC = () => {
         };
         await saveDocument('transactions', transactionToSave);
         showToast("Movimiento registrado correctamente", 'success');
-        setActiveTab('list');
+        // No need to switch tab as we are already in List view usually
     } catch (error) {
         console.error("Error saving transaction:", error);
         showToast("Error al guardar en la nube. Verifique la consola.", 'error');
@@ -228,7 +230,8 @@ const App: React.FC = () => {
                   
                   {isAdmin && (
                     <>
-                        <NavButton tab="new" icon={<PlusCircle className="w-4 h-4"/>} label="Nuevo" />
+                        {/* New Transaction button moved to List view, replaced here with Annotations */}
+                        <NavButton tab="annotations" icon={<ClipboardList className="w-4 h-4"/>} label="Anotaciones" />
                         <NavButton tab="masters" icon={<Database className="w-4 h-4"/>} label="Maestros" />
                     </>
                   )}
@@ -283,17 +286,14 @@ const App: React.FC = () => {
             centers={centers}
             movementTypes={movementTypes}
             currencies={currencies}
+            onSaveNew={handleSaveTransaction}
+            isAdmin={isAdmin}
           />
         )}
         
-        {activeTab === 'new' && isAdmin && (
-          <TransactionForm 
-            onSave={handleSaveTransaction} 
-            onCancel={() => setActiveTab('dashboard')}
-            centers={centers}
-            movementTypes={movementTypes}
-            currencies={currencies}
-          />
+        {/* Annotation Tab */}
+        {activeTab === 'annotations' && isAdmin && (
+          <Annotations />
         )}
 
         {activeTab === 'masters' && isAdmin && (
@@ -313,25 +313,24 @@ const App: React.FC = () => {
             <span className="text-[10px]">Inicio</span>
         </button>
         
+        <button onClick={() => setActiveTab('list')} className={`flex flex-col items-center gap-1 ${activeTab === 'list' ? 'text-[#1B365D]' : 'text-slate-400'}`}>
+            <List className="w-6 h-6" />
+            <span className="text-[10px]">Historial</span>
+        </button>
+
+        {isAdmin && (
+            <button onClick={() => setActiveTab('annotations')} className={`flex flex-col items-center gap-1 ${activeTab === 'annotations' ? 'text-[#1B365D]' : 'text-slate-400'}`}>
+                <ClipboardList className="w-6 h-6" />
+                <span className="text-[10px]">Notas</span>
+            </button>
+        )}
+
         {isAdmin && (
             <button onClick={() => setActiveTab('masters')} className={`flex flex-col items-center gap-1 ${activeTab === 'masters' ? 'text-[#1B365D]' : 'text-slate-400'}`}>
                 <Database className="w-6 h-6" />
                 <span className="text-[10px]">Datos</span>
             </button>
         )}
-
-        {isAdmin && (
-            <button onClick={() => setActiveTab('new')} className={`flex flex-col items-center gap-1 ${activeTab === 'new' ? 'text-[#1B365D]' : 'text-slate-400'}`}>
-                <div className="bg-[#1B365D] rounded-full p-3 -mt-8 shadow-lg border-4 border-slate-50 text-white">
-                    <PlusCircle className="w-6 h-6" />
-                </div>
-            </button>
-        )}
-
-        <button onClick={() => setActiveTab('list')} className={`flex flex-col items-center gap-1 ${activeTab === 'list' ? 'text-[#1B365D]' : 'text-slate-400'}`}>
-            <List className="w-6 h-6" />
-            <span className="text-[10px]">Historial</span>
-        </button>
       </div>
 
       {/* LOGOUT CONFIRMATION MODAL */}
