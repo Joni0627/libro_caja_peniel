@@ -203,11 +203,19 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
         const idxAmount = headers.findIndex(h => h === 'monto2' || h === 'monto');
         const idxDetail = headers.findIndex(h => h === 'detalle');
         const idxCurrency = headers.findIndex(h => h === 'moneda');
-        const idxTypeDesc = headers.findIndex(h => 
-            h === 'descripcion_tipo_movimiento' || 
-            h === 'tipo_movimiento' || 
-            h === 'descripcion'
-        );
+        
+        // FIX: Search specifically for the description column first.
+        // The user's CSV has both 'Tipo_Movimiento' (IDs) and 'Descripcion_Tipo_Movimiento' (Text).
+        // We must prioritize the text column.
+        let idxTypeDesc = headers.findIndex(h => h === 'descripcion_tipo_movimiento');
+        
+        // Fallback if the specific description column is not found
+        if (idxTypeDesc === -1) {
+             idxTypeDesc = headers.findIndex(h => 
+                h === 'tipo_movimiento' || 
+                h === 'descripcion'
+            );
+        }
 
         if (idxDate === -1 || idxAmount === -1) {
             alert(`No se encontraron las columnas requeridas 'Fecha' y 'Monto2' (o 'Monto'). \nColumnas detectadas: ${headers.join(', ')}`);
