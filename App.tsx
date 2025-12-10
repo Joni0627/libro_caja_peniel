@@ -132,13 +132,14 @@ const App: React.FC = () => {
 
         const transactionToSave = {
             ...newTx,
-            attachment: attachmentUrl
+            // FIX: Ensure undefined becomes null for Firestore
+            attachment: attachmentUrl || null
         };
         await saveDocument('transactions', transactionToSave);
         setActiveTab('list');
     } catch (error) {
         console.error("Error saving transaction:", error);
-        alert("Error al guardar en la nube.");
+        alert("Error al guardar en la nube. Verifique la consola para más detalles.");
     }
   };
 

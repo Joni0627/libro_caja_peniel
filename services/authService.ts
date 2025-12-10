@@ -9,7 +9,15 @@ import { auth, db } from "../firebase";
 import { User, UserProfile } from "../types";
 import { INITIAL_USERS } from "../constants";
 
+// Helper to check if auth is initialized (it might be an empty object {} if env vars are missing)
+const isAuthValid = () => {
+  return auth && typeof auth === 'object' && 'app' in auth;
+};
+
 export const login = async (email: string, password: string) => {
+  if (!isAuthValid()) {
+    throw new Error("No se pudo conectar al servicio de autenticación. Verifica la configuración.");
+  }
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return userCredential.user;
@@ -19,12 +27,21 @@ export const login = async (email: string, password: string) => {
 };
 
 export const logout = async () => {
-  await firebaseSignOut(auth);
+  if (isAuthValid()) {
+    await firebaseSignOut(auth);
+  }
 };
 
 export const subscribeToAuth = (
   onUserChanged: (firebaseUser: FirebaseUser | null, appUser: User | null) => void
 ) => {
+  // Prevent crash if Firebase Auth failed to initialize (e.g. in Preview without Env Vars)
+  if (!isAuthValid()) {
+    console.warn("Auth service not initialized properly. Skipping auth subscription.");
+    onUserChanged(null, null);
+    return () => {}; // Return dummy unsubscribe
+  }
+
   return onAuthStateChanged(auth, async (firebaseUser) => {
     if (firebaseUser && firebaseUser.email) {
       // 1. User is authenticated in Firebase Auth

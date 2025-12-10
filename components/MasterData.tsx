@@ -60,9 +60,7 @@ const MasterData: React.FC<MasterDataProps> = ({
     if (newCenter.name && newCenter.code) {
       setIsProcessing(true);
       try {
-        const id = editingId || undefined; // Let firebase gen id if new? actually saveDocument handles add if no id
-        // For add we typically want auto-ID or we generate one. saveDocument supports both.
-        // Let's rely on saveDocument logic. If editingId exists, it updates. If not, it adds.
+        const id = editingId || undefined; 
         const data = {
             name: newCenter.name,
             code: newCenter.code,
@@ -174,13 +172,19 @@ const MasterData: React.FC<MasterDataProps> = ({
         
         setIsProcessing(true);
         try {
-            const url = await uploadImage(file, 'app_config/logo.png');
+            // FIX: Use timestamp to force uniqueness and bypass cache
+            const timestamp = Date.now();
+            const fileExtension = file.name.split('.').pop() || 'png';
+            const fileName = `app_config/logo_${timestamp}.${fileExtension}`;
+
+            const url = await uploadImage(file, fileName);
             await updateLogoUrl(url);
         } catch (error) {
             console.error(error);
             alert("Error al subir imagen");
         } finally {
             setIsProcessing(false);
+            if (logoInputRef.current) logoInputRef.current.value = '';
         }
     }
   };

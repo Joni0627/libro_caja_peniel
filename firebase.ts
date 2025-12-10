@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getAuth } from "firebase/auth";
+import { getFirestore, Firestore } from "firebase/firestore";
+import { getStorage, FirebaseStorage } from "firebase/storage";
+import { getAuth, Auth } from "firebase/auth";
 
 // Helper para evitar crash si import.meta.env no está definido (aunque en Vite debería estarlo)
 const getEnv = (key: string) => {
@@ -24,15 +24,25 @@ const firebaseConfig = {
   appId: getEnv('VITE_FIREBASE_APP_ID')
 };
 
-// Validación básica para debuggear pantalla blanca
-if (!firebaseConfig.apiKey) {
-  console.error("CRITICAL: Firebase API Key is missing. Check your Vercel Environment Variables.");
+// Declare vars to be exported
+let app;
+// Cast to types to avoid TS errors when initializing with partials/undefined in catch block
+let db: Firestore = {} as Firestore;
+let storage: FirebaseStorage = {} as FirebaseStorage;
+let auth: Auth = {} as Auth;
+
+try {
+  // Initialize Firebase
+  app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  storage = getStorage(app);
+  auth = getAuth(app);
+} catch (error) {
+  console.error("Firebase Initialization Error:", error);
+  console.warn("La aplicación se ha iniciado sin conexión a Firebase debido a falta de configuración (posiblemente en Preview).");
+  // We allow the script to continue so the React ErrorBoundary can catch the connection error later
+  // and display a UI message instead of a white screen.
 }
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-export const auth = getAuth(app);
-
+export { db, storage, auth };
 export default app;
