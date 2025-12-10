@@ -86,7 +86,13 @@ const MasterData: React.FC<MasterDataProps> = ({
   };
 
   // --- MOVEMENT TYPE LOGIC ---
-  const addType = async () => {
+  const handleEditType = (type: MovementType) => {
+      setNewType(type);
+      setEditingId(type.id);
+      setIsModalOpen(true);
+  };
+
+  const saveTypeHandler = async () => {
     if (newType.name) {
       setIsProcessing(true);
       try {
@@ -94,14 +100,21 @@ const MasterData: React.FC<MasterDataProps> = ({
             name: newType.name, 
             category: newType.category,
             subCategory: newType.subCategory || null
-        });
+        }, editingId || undefined);
         closeModal();
       } finally {
         setIsProcessing(false);
       }
+    } else {
+        alert("El nombre es obligatorio");
     }
   };
-  const deleteTypeHandler = async (id: string) => await deleteDocument('movement_types', id);
+  
+  const deleteTypeHandler = async (id: string) => {
+    if(window.confirm("¿Estás seguro de eliminar este tipo de movimiento?")) {
+        await deleteDocument('movement_types', id);
+    }
+  };
 
   // --- CURRENCY LOGIC ---
   const addCurrency = async () => {
@@ -263,9 +276,14 @@ const MasterData: React.FC<MasterDataProps> = ({
                         </span>
                       </td>
                       <td className="p-3 text-right">
-                        <button onClick={() => deleteTypeHandler(m.id)} className="text-rose-500 hover:bg-rose-50 p-1 rounded">
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="flex justify-end gap-1">
+                            <button onClick={() => handleEditType(m)} className="text-[#1B365D] hover:bg-slate-200 p-1 rounded transition-colors" title="Editar">
+                                <Pencil size={16} />
+                            </button>
+                            <button onClick={() => deleteTypeHandler(m.id)} className="text-rose-500 hover:bg-rose-50 p-1 rounded" title="Eliminar">
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -334,7 +352,7 @@ const MasterData: React.FC<MasterDataProps> = ({
                 <div className="bg-[#1B365D] px-6 py-4 flex justify-between items-center">
                     <h3 className="text-white font-bold text-lg">
                         {activeTab === 'centers' ? (editingId ? 'Editar Centro' : 'Nuevo Centro') : 
-                         activeTab === 'types' ? 'Nuevo Tipo de Movimiento' : 
+                         activeTab === 'types' ? (editingId ? 'Editar Tipo de Movimiento' : 'Nuevo Tipo de Movimiento') : 
                          activeTab === 'users' ? (editingId ? 'Editar Usuario' : 'Nuevo Usuario') : 'Nueva Moneda'}
                     </h3>
                     <button onClick={closeModal} className="text-white/80 hover:text-white transition-colors">
@@ -516,7 +534,7 @@ const MasterData: React.FC<MasterDataProps> = ({
                         disabled={isProcessing}
                         onClick={() => {
                             if (activeTab === 'centers') saveCenter();
-                            if (activeTab === 'types') addType();
+                            if (activeTab === 'types') saveTypeHandler();
                             if (activeTab === 'currencies') addCurrency();
                             if (activeTab === 'users') saveUserHandler();
                         }}
