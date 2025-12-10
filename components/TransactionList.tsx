@@ -1,17 +1,20 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Transaction, MovementCategory, Center, MovementType } from '../types';
-import { FileText, Filter, ArrowUpRight, ArrowDownRight, Eye, Upload, Calendar, X, Download, Search, ChevronDown } from 'lucide-react';
+import { FileText, Filter, ArrowUpRight, ArrowDownRight, Eye, Upload, Calendar, X, Download, Search, ChevronDown, Trash2, Pencil } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { deleteDocument, saveDocument, uploadImage } from '../services/firebaseService';
+import TransactionForm from './TransactionForm';
 
 interface TransactionListProps {
   transactions: Transaction[];
   onImport: (data: Transaction[]) => void;
   centers: Center[];
   movementTypes: MovementType[];
+  currencies: string[]; // Added to pass to Edit Form
 }
 
-const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImport, centers, movementTypes }) => {
+const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImport, centers, movementTypes, currencies }) => {
   // --- VIEW FILTERS STATE ---
   const [filterMode, setFilterMode] = useState<'month' | 'range'>('month');
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -24,6 +27,9 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTypeId, setFilterTypeId] = useState('');
 
+  // --- EDIT / DELETE STATE ---
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+
   // --- PDF MODAL STATE ---
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [pdfTargetMonth, setPdfTargetMonth] = useState<string>(new Date().toISOString().slice(0, 7));
@@ -33,6 +39,44 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
   const getTypeName = (id: string) => movementTypes.find(m => m.id === id)?.name || 'Desconocido';
   const getCenterName = (id: string) => centers.find(c => c.id === id)?.name || 'Desconocido';
   const isIncome = (id: string) => movementTypes.find(m => m.id === id)?.category === MovementCategory.INCOME;
+
+  // --- ACTIONS LOGIC ---
+  const handleDelete = async (id: string) => {
+      if (window.confirm('¿Estás seguro de que quieres eliminar este movimiento de forma permanente?')) {
+          try {
+              await deleteDocument('transactions', id);
+          } catch (error) {
+              console.error("Error deleting:", error);
+              alert("Error al eliminar el registro.");
+          }
+      }
+  };
+
+  const handleUpdate = async (formData: Omit<Transaction, 'id'>) => {
+      if (!editingTransaction) return;
+
+      try {
+        let attachmentUrl = formData.attachment;
+        // If it's a new base64 image (starts with data:), upload it. 
+        // If it's the old URL (starts with http), keep it.
+        if (formData.attachment && formData.attachment.startsWith('data:')) {
+            const fileName = `receipts/${Date.now()}.jpg`;
+            attachmentUrl = await uploadImage(formData.attachment, fileName);
+        }
+
+        const transactionToUpdate = {
+            ...formData,
+            attachment: attachmentUrl || null
+        };
+
+        await saveDocument('transactions', transactionToUpdate, editingTransaction.id);
+        setEditingTransaction(null); // Close modal
+      } catch (error) {
+          console.error("Error updating:", error);
+          alert("Error al actualizar el registro.");
+      }
+  };
+
 
   // --- FILTERING LOGIC (VIEW) ---
   const filteredTransactions = useMemo(() => {
@@ -449,13 +493,14 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                     <th className="px-6 py-4">Detalle</th>
                     <th className="px-6 py-4 text-right">Monto</th>
                     <th className="px-6 py-4 text-center">Adjunto</th>
+                    <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
             </thead>
             
             {groupedTransactions.length === 0 ? (
                  <tbody>
                     <tr>
-                        <td colSpan={6} className="px-6 py-12 text-center flex flex-col items-center justify-center text-slate-400 gap-2">
+                        <td colSpan={7} className="px-6 py-12 text-center flex flex-col items-center justify-center text-slate-400 gap-2">
                             <Filter className="w-8 h-8 opacity-20" />
                             <span>No se encontraron movimientos con los filtros aplicados.</span>
                         </td>
@@ -465,7 +510,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                 groupedTransactions.map((group) => (
                     <tbody key={group.month} className="border-b last:border-0">
                         <tr className="bg-slate-50/50">
-                            <td colSpan={6} className="px-6 py-2 text-xs font-bold text-[#1B365D] uppercase tracking-wider border-b border-slate-100">
+                            <td colSpan={7} className="px-6 py-2 text-xs font-bold text-[#1B365D] uppercase tracking-wider border-b border-slate-100">
                                 {new Date(group.month + '-01').toLocaleString('es-ES', { month: 'long', year: 'numeric' })}
                             </td>
                         </tr>
@@ -473,7 +518,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                         {group.transactions.map((t) => {
                              const income = isIncome(t.movementTypeId);
                              return (
-                                <tr key={t.id} className="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
+                                <tr key={t.id} className="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 group">
                                     <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{t.date}</td>
                                     <td className="px-6 py-4">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase ${
@@ -498,6 +543,24 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                                             <span className="text-slate-300">-</span>
                                         )}
                                     </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                            <button 
+                                                onClick={() => setEditingTransaction(t)}
+                                                className="p-1.5 text-slate-400 hover:text-[#1B365D] hover:bg-slate-100 rounded transition-colors" 
+                                                title="Editar"
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDelete(t.id)}
+                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors" 
+                                                title="Eliminar"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </td>
                                 </tr>
                              );
                         })}
@@ -506,7 +569,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                             <td colSpan={4} className="px-6 py-3 text-right font-bold text-[#1B365D] text-xs uppercase tracking-wider">
                                 Balance {new Date(group.month + '-01').toLocaleString('es-ES', { month: 'long' })}
                             </td>
-                            <td colSpan={2} className="px-6 py-3 text-right">
+                            <td colSpan={3} className="px-6 py-3 text-right">
                                 <div className="flex flex-col items-end gap-1">
                                     {Object.entries(group.totals).map(([curr, total]: [string, { income: number; expense: number; balance: number }]) => (
                                         <div key={curr} className="text-xs font-medium text-slate-700 bg-white/50 px-2 py-1 rounded border border-slate-200 shadow-sm">
@@ -528,6 +591,30 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
             )}
         </table>
       </div>
+
+      {/* --- EDIT MODAL --- */}
+      {editingTransaction && (
+         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl animate-in fade-in zoom-in duration-200">
+               <div className="relative">
+                    <button 
+                        onClick={() => setEditingTransaction(null)}
+                        className="absolute -top-10 right-0 text-white/80 hover:text-white flex items-center gap-1"
+                    >
+                        <X size={20} /> Cancelar
+                    </button>
+                    <TransactionForm 
+                        onSave={handleUpdate}
+                        onCancel={() => setEditingTransaction(null)}
+                        centers={centers}
+                        movementTypes={movementTypes}
+                        currencies={currencies}
+                        initialData={editingTransaction}
+                    />
+               </div>
+            </div>
+         </div>
+      )}
 
       {/* --- PDF GENERATION MODAL --- */}
       {isPdfModalOpen && (

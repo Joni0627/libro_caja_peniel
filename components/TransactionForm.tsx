@@ -1,7 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Transaction, Center, MovementType } from '../types';
-import { Camera, Loader2, X } from 'lucide-react';
-// import { analyzeReceiptImage } from '../services/geminiService'; // Desactivado
+import { Camera, Loader2, X, Save } from 'lucide-react';
 
 interface TransactionFormProps {
   onSave: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
@@ -9,19 +8,36 @@ interface TransactionFormProps {
   centers: Center[];
   movementTypes: MovementType[];
   currencies: string[];
+  initialData?: Transaction; // Optional prop for editing mode
 }
 
-const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, centers, movementTypes, currencies }) => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [centerId, setCenterId] = useState(centers.length > 0 ? centers[0].id : '');
-  const [movementTypeId, setMovementTypeId] = useState(movementTypes.length > 0 ? movementTypes[0].id : '');
-  const [detail, setDetail] = useState('');
-  const [amount, setAmount] = useState<string>('');
-  const [currency, setCurrency] = useState<string>(currencies[0] || 'ARS');
-  const [attachment, setAttachment] = useState<string | undefined>(undefined);
+const TransactionForm: React.FC<TransactionFormProps> = ({ 
+  onSave, onCancel, centers, movementTypes, currencies, initialData 
+}) => {
+  // Initialize state with default values or initialData if provided
+  const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
+  const [centerId, setCenterId] = useState(initialData?.centerId || (centers.length > 0 ? centers[0].id : ''));
+  const [movementTypeId, setMovementTypeId] = useState(initialData?.movementTypeId || (movementTypes.length > 0 ? movementTypes[0].id : ''));
+  const [detail, setDetail] = useState(initialData?.detail || '');
+  const [amount, setAmount] = useState<string>(initialData ? initialData.amount.toString() : '');
+  const [currency, setCurrency] = useState<string>(initialData?.currency || (currencies[0] || 'ARS'));
+  const [attachment, setAttachment] = useState<string | undefined>(initialData?.attachment);
   
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // If initialData changes (e.g. modal opens with new data), update state
+  useEffect(() => {
+    if (initialData) {
+        setDate(initialData.date);
+        setCenterId(initialData.centerId);
+        setMovementTypeId(initialData.movementTypeId);
+        setDetail(initialData.detail);
+        setAmount(initialData.amount.toString());
+        setCurrency(initialData.currency);
+        setAttachment(initialData.attachment);
+    }
+  }, [initialData]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -30,7 +46,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, cen
       reader.onloadend = async () => {
         const base64 = reader.result as string;
         setAttachment(base64);
-        // AI Analysis removed
       };
       reader.readAsDataURL(file);
     }
@@ -51,6 +66,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, cen
         });
     } catch (error) {
         // Error handling done in parent
+        console.error(error);
     } finally {
         setIsSaving(false);
     }
@@ -61,11 +77,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, cen
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const isEditing = !!initialData;
+
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto space-y-6 border-t-4 border-[#1B365D]">
-      <div className="flex justify-between items-center border-b pb-4">
-        <h2 className="text-2xl font-bold text-[#1B365D]">Registrar Movimiento</h2>
-      </div>
+    <form onSubmit={handleSubmit} className={`bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto space-y-6 ${!isEditing ? 'border-t-4 border-[#1B365D]' : ''}`}>
+      {!isEditing && (
+        <div className="flex justify-between items-center border-b pb-4">
+            <h2 className="text-2xl font-bold text-[#1B365D]">Registrar Movimiento</h2>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Date */}
@@ -200,10 +220,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, onCancel, cen
             {isSaving ? (
                 <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    Guardando...
+                    {isEditing ? 'Actualizando...' : 'Guardando...'}
                 </>
             ) : (
-                'Guardar Movimiento'
+                <>
+                    {isEditing ? <Save className="w-4 h-4" /> : null}
+                    {isEditing ? 'Actualizar Movimiento' : 'Guardar Movimiento'}
+                </>
             )}
         </button>
       </div>

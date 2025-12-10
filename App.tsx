@@ -305,6 +305,7 @@ const App: React.FC = () => {
             onImport={handleImportTransactions}
             centers={centers}
             movementTypes={movementTypes}
+            currencies={currencies}
           />
         )}
         
