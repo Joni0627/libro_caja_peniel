@@ -174,6 +174,9 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
     return result;
   };
 
+  // Helper normalization function (ASCII, Lowercase, Trim)
+  const normalize = (str: string) => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
   const parseSheetCSV = (csvText: string) => {
     try {
         const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== '');
@@ -190,27 +193,37 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
 
         console.log(`Detected delimiter: '${delimiter}'`);
 
-        // 2. Parse Headers
-        // Using simple split for headers usually works, but safe to use parser
-        const headers = parseCSVLine(firstLine.toLowerCase(), delimiter).map(h => h.trim());
+        // 2. Parse Headers (Normalize them to ensure accents don't break detection)
+        const headers = parseCSVLine(firstLine, delimiter).map(normalize);
         
+        console.log("Headers detected (normalized):", headers);
+
         // 3. Find specific columns
         const idxDate = headers.findIndex(h => h === 'fecha');
         const idxAmount = headers.findIndex(h => h === 'monto2' || h === 'monto');
         const idxDetail = headers.findIndex(h => h === 'detalle');
         const idxCurrency = headers.findIndex(h => h === 'moneda');
-        const idxTypeDesc = headers.findIndex(h => h === 'descripcion_tipo_movimiento' || h === 'tipo_movimiento');
+        const idxTypeDesc = headers.findIndex(h => 
+            h === 'descripcion_tipo_movimiento' || 
+            h === 'tipo_movimiento' || 
+            h === 'descripcion'
+        );
 
         if (idxDate === -1 || idxAmount === -1) {
             alert(`No se encontraron las columnas requeridas 'Fecha' y 'Monto2' (o 'Monto'). \nColumnas detectadas: ${headers.join(', ')}`);
             return;
         }
 
+        if (idxTypeDesc === -1) {
+            alert("Atención: No se encontró la columna 'Descripcion_Tipo_Movimiento' (o similar). La clasificación automática fallará.");
+        }
+
+        // Prepare Matching Logic: Sort types by length DESCENDING
+        // This ensures "OFRENDAS MISIONERAS" is checked before "OFRENDAS"
+        const sortedTypes = [...movementTypes].sort((a, b) => b.name.length - a.name.length);
+
         const newTransactions: Transaction[] = [];
         let errors = 0;
-
-        // Normalization helper: Lowercase, remove accents
-        const normalize = (str: string) => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i];
@@ -248,34 +261,25 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                      dateStr = new Date().toISOString().split('T')[0];
                 }
 
-                // 3. Type Mapping (Improved Logic)
-                const rawTypeDesc = cols[idxTypeDesc] || '';
-                const typeDesc = normalize(rawTypeDesc);
+                // 3. Type Mapping (Revised Logic)
+                const rawTypeDesc = idxTypeDesc !== -1 ? (cols[idxTypeDesc] || '') : '';
+                const csvTypeNorm = normalize(rawTypeDesc);
                 
-                // Strategy A: Exact Match
-                let matchedType = movementTypes.find(mt => normalize(mt.name) === typeDesc);
-                
-                // Strategy B: Reverse Containment (CSV contains App Type Name)
-                // Example: CSV="INSTALACIONES (IDEM...)" contains App="INSTALACIONES"
-                if (!matchedType && typeDesc.length > 0) {
-                     const candidates = movementTypes.filter(mt => {
-                         const mtName = normalize(mt.name);
-                         // Length > 2 prevents matching very short substrings falsely
-                         return mtName.length > 2 && typeDesc.includes(mtName);
-                     });
-                     
-                     if (candidates.length > 0) {
-                         // Pick longest match (most specific)
-                         // e.g. Prefer "OFRENDAS MISIONERAS" over "OFRENDAS" if both present
-                         candidates.sort((a, b) => b.name.length - a.name.length);
-                         matchedType = candidates[0];
-                     }
-                }
+                let matchedType: MovementType | undefined;
 
-                // Strategy C: Forward Containment (App Type Name contains CSV text)
-                // Example: App="OFRENDAS" contains CSV="Ofrenda"
-                if (!matchedType && typeDesc.length > 2) {
-                    matchedType = movementTypes.find(mt => normalize(mt.name).includes(typeDesc));
+                if (csvTypeNorm) {
+                    // Check containment: Does the CSV text CONTAIN the App Type Name?
+                    // OR does the App Type Name EQUAL the CSV text?
+                    // Because we sorted `sortedTypes` by length descending:
+                    // 1. CSV="OFRENDAS MISIONERAS", App="OFRENDAS MISIONERAS" -> Match (contains/equals) -> Found.
+                    // 2. CSV="OFRENDAS MISIONERAS", App="OFRENDAS" -> (Matches later, but first loop hits longest).
+                    // 3. CSV="INSTALACIONES (IDEM...)", App="INSTALACIONES" -> Match (contains).
+                    
+                    matchedType = sortedTypes.find(mt => {
+                        const mtNameNorm = normalize(mt.name);
+                        // Check if CSV description includes the app type name
+                        return csvTypeNorm.includes(mtNameNorm);
+                    });
                 }
 
                 // 4. Currency
@@ -288,7 +292,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                     date: dateStr,
                     centerId: centers[0]?.id || 'default', 
                     movementTypeId: matchedType ? matchedType.id : (movementTypes[0]?.id || 'unknown'),
-                    detail: cols[idxDetail] || 'Importado desde CSV',
+                    detail: cols[idxDetail] || rawTypeDesc || 'Importado desde CSV',
                     amount: Math.abs(amount), // Ensure positive
                     currency: currencyCode
                 });
