@@ -49,6 +49,18 @@ export interface Annotation {
   createdAt: number;
 }
 
+export interface Inversion {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  days: number; // Plazo en días
+  interest: number; // Monto de interés estimado o tasa
+  voucher: string; // Número de comprobante
+  attachment?: string; // URL o Base64 del adjunto
+  status: 'ACTIVE' | 'FINISHED'; // Para saber si ya venció (opcional, por defecto ACTIVE)
+}
+
 export interface DashboardStats {
   totalBalance: Record<string, number>;
   totalIncome: Record<string, number>;

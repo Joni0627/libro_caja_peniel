@@ -5,8 +5,9 @@ import Dashboard from './components/Dashboard';
 import TransactionList from './components/TransactionList';
 import MasterData from './components/MasterData';
 import Annotations from './components/Annotations';
+import Inversions from './components/Inversions'; // Import New Component
 import Login from './components/Login';
-import { LayoutDashboard, PlusCircle, List, Database, Shield, User as UserIcon, Loader2, AlertTriangle, LogOut, X, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, List, Database, Shield, User as UserIcon, Loader2, AlertTriangle, LogOut, X, ClipboardList, TrendingUp } from 'lucide-react';
 import { 
   subscribeToCollection, 
   subscribeToTransactions, 
@@ -20,8 +21,8 @@ import { subscribeToAuth, logout } from './services/authService';
 import { useToast } from './components/Toast';
 
 const App: React.FC = () => {
-  // Changed default types for tab to include annotations and remove 'new' (handled in list)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'annotations' | 'masters'>('dashboard');
+  // Update Type for Tab
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'inversions' | 'annotations' | 'masters'>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   
@@ -228,6 +229,9 @@ const App: React.FC = () => {
                   <NavButton tab="dashboard" icon={<LayoutDashboard className="w-4 h-4"/>} label="Dashboard" />
                   <NavButton tab="list" icon={<List className="w-4 h-4"/>} label="Movimientos" />
                   
+                  {/* Both Admin and User can see Inversions, but only Admin can edit inside */}
+                  <NavButton tab="inversions" icon={<TrendingUp className="w-4 h-4"/>} label="Inversiones" />
+
                   {isAdmin && (
                     <>
                         {/* New Transaction button moved to List view, replaced here with Annotations */}
@@ -287,6 +291,11 @@ const App: React.FC = () => {
             isAdmin={isAdmin}
           />
         )}
+
+        {/* Inversions Tab */}
+        {activeTab === 'inversions' && (
+          <Inversions isAdmin={isAdmin} />
+        )}
         
         {/* Annotation Tab */}
         {activeTab === 'annotations' && isAdmin && (
@@ -313,6 +322,11 @@ const App: React.FC = () => {
         <button onClick={() => setActiveTab('list')} className={`flex flex-col items-center gap-1 ${activeTab === 'list' ? 'text-[#1B365D]' : 'text-slate-400'}`}>
             <List className="w-6 h-6" />
             <span className="text-[10px]">Historial</span>
+        </button>
+        
+        <button onClick={() => setActiveTab('inversions')} className={`flex flex-col items-center gap-1 ${activeTab === 'inversions' ? 'text-[#1B365D]' : 'text-slate-400'}`}>
+            <TrendingUp className="w-6 h-6" />
+            <span className="text-[10px]">Inversión</span>
         </button>
 
         {isAdmin && (
