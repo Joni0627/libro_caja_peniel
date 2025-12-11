@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Inversion } from '../types';
 import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save } from 'lucide-react';
 import { subscribeToCollection, saveDocument, deleteDocument, uploadImage } from '../services/firebaseService';
 import { useToast } from './Toast';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface InversionsProps {
   isAdmin: boolean;
@@ -107,11 +107,33 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin }) => {
   const totalInvested = inversions.reduce((acc, curr) => acc + curr.amount, 0);
   const potentialInterest = inversions.reduce((acc, curr) => acc + curr.interest, 0);
 
-  // Data for Chart
-  const chartData = [
-    { name: 'Capital Invertido', value: totalInvested, color: '#1B365D' },
-    { name: 'Interés Estimado', value: potentialInterest, color: '#84cc16' }
-  ];
+  // --- CHART DATA (Grouped by Month) ---
+  const monthlyChartData = useMemo(() => {
+    const grouped: Record<string, { capital: number; interest: number }> = {};
+
+    inversions.forEach(inv => {
+        const monthKey = inv.date.substring(0, 7); // YYYY-MM
+        if (!grouped[monthKey]) {
+            grouped[monthKey] = { capital: 0, interest: 0 };
+        }
+        grouped[monthKey].capital += inv.amount;
+        grouped[monthKey].interest += inv.interest;
+    });
+
+    // Convert to array and sort chronologically
+    return Object.entries(grouped)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, data]) => {
+            const [y, m] = key.split('-');
+            const date = new Date(parseInt(y), parseInt(m) - 1);
+            // Format: "Ene 24"
+            const name = date.toLocaleString('es-ES', { month: 'short', year: '2-digit' });
+            return {
+                name: name.charAt(0).toUpperCase() + name.slice(1), // Capitalize first letter
+                ...data
+            };
+        });
+  }, [inversions]);
 
   return (
     <div className="space-y-6">
@@ -131,33 +153,42 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin }) => {
         </div>
 
         {/* Chart Section */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="font-bold text-sm text-slate-500 uppercase tracking-wider mb-4">Análisis de Rendimiento</h3>
-            <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <XAxis 
-                            dataKey="name" 
-                            axisLine={false} 
-                            tickLine={false} 
-                            tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} 
-                            dy={10} 
-                        />
-                        <YAxis hide />
-                        <Tooltip 
-                            cursor={{ fill: '#f8fafc' }}
-                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                            formatter={(value: number) => [`$ ${value.toLocaleString('es-AR')}`, '']}
-                        />
-                        <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={80} animationDuration={1500}>
-                             {chartData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                             ))}
-                        </Bar>
-                    </BarChart>
-                </ResponsiveContainer>
+        {monthlyChartData.length > 0 && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h3 className="font-bold text-sm text-slate-500 uppercase tracking-wider mb-4">Evolución Mensual de Inversiones</h3>
+                <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                            <XAxis 
+                                dataKey="name" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} 
+                                dy={10} 
+                            />
+                            <YAxis 
+                                hide={false} 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fill: '#94a3b8', fontSize: 11 }}
+                                tickFormatter={(value) => `$${value / 1000}k`} 
+                            />
+                            <Tooltip 
+                                cursor={{ fill: '#f8fafc' }}
+                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                formatter={(value: number, name: string) => [
+                                    `$ ${value.toLocaleString('es-AR')}`, 
+                                    name === 'capital' ? 'Capital' : 'Interés'
+                                ]}
+                            />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            <Bar name="Capital" dataKey="capital" fill="#1B365D" radius={[4, 4, 0, 0]} barSize={40} />
+                            <Bar name="Interés" dataKey="interest" fill="#84cc16" radius={[4, 4, 0, 0]} barSize={40} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
             </div>
-        </div>
+        )}
 
         {/* Action Bar */}
         <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
