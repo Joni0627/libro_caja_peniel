@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Inversion } from '../types';
-import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save, AlertTriangle } from 'lucide-react';
+import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save } from 'lucide-react';
 import { subscribeToCollection, saveDocument, deleteDocument, uploadImage } from '../services/firebaseService';
 import { useToast } from './Toast';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface InversionsProps {
   isAdmin: boolean;
@@ -106,6 +107,12 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin }) => {
   const totalInvested = inversions.reduce((acc, curr) => acc + curr.amount, 0);
   const potentialInterest = inversions.reduce((acc, curr) => acc + curr.interest, 0);
 
+  // Data for Chart
+  const chartData = [
+    { name: 'Capital Invertido', value: totalInvested, color: '#1B365D' },
+    { name: 'Interés Estimado', value: potentialInterest, color: '#84cc16' }
+  ];
+
   return (
     <div className="space-y-6">
         {/* Header Stats */}
@@ -120,6 +127,35 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin }) => {
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Interés Estimado Total</p>
                  <h2 className="text-3xl font-bold text-[#84cc16]">$ {potentialInterest.toLocaleString('es-AR')}</h2>
+            </div>
+        </div>
+
+        {/* Chart Section */}
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <h3 className="font-bold text-sm text-slate-500 uppercase tracking-wider mb-4">Análisis de Rendimiento</h3>
+            <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <XAxis 
+                            dataKey="name" 
+                            axisLine={false} 
+                            tickLine={false} 
+                            tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} 
+                            dy={10} 
+                        />
+                        <YAxis hide />
+                        <Tooltip 
+                            cursor={{ fill: '#f8fafc' }}
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                            formatter={(value: number) => [`$ ${value.toLocaleString('es-AR')}`, '']}
+                        />
+                        <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={80} animationDuration={1500}>
+                             {chartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                             ))}
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
             </div>
         </div>
 
