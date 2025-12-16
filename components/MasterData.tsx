@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Center, MovementType, MovementCategory, User, UserProfile } from '../types';
-import { Trash2, Plus, X, Building, MapPin, User as UserIcon, Phone, Pencil, Mail, Shield, Loader2 } from 'lucide-react';
-import { saveDocument, deleteDocument, updateCurrencies } from '../services/firebaseService';
+import React, { useState, useEffect } from 'react';
+import { Center, MovementType, MovementCategory, User, UserProfile, ChurchData } from '../types';
+import { Trash2, Plus, X, Building, MapPin, User as UserIcon, Phone, Pencil, Mail, Shield, Loader2, Home, Link, Info } from 'lucide-react';
+import { saveDocument, deleteDocument, updateCurrencies, saveChurchData } from '../services/firebaseService';
 import { useToast } from './Toast';
 
 interface MasterDataProps {
@@ -9,12 +9,13 @@ interface MasterDataProps {
   movementTypes: MovementType[];
   currencies: string[];
   users: User[];
+  churchData: ChurchData;
 }
 
 const MasterData: React.FC<MasterDataProps> = ({ 
-  centers, movementTypes, currencies, users
+  centers, movementTypes, currencies, users, churchData
 }) => {
-  const [activeTab, setActiveTab] = useState<'centers' | 'types' | 'currencies' | 'users'>('centers');
+  const [activeTab, setActiveTab] = useState<'centers' | 'types' | 'currencies' | 'users' | 'church'>('centers');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // -- Edit Mode Tracking --
@@ -33,7 +34,18 @@ const MasterData: React.FC<MasterDataProps> = ({
   // -- Users State --
   const [newUser, setNewUser] = useState<Partial<User>>({ profile: UserProfile.USER });
 
+  // -- Church Data State --
+  const [newChurchData, setNewChurchData] = useState<ChurchData>({ name: '' });
+
   const { showToast } = useToast();
+
+  // Update form when external churchData changes (if we are in the form)
+  useEffect(() => {
+    if (activeTab === 'church' && isModalOpen) {
+       setNewChurchData(churchData);
+    }
+  }, [churchData, activeTab, isModalOpen]);
+
 
   // -- Handlers --
   const openModal = () => {
@@ -42,6 +54,12 @@ const MasterData: React.FC<MasterDataProps> = ({
     setNewType({ category: MovementCategory.INCOME, name: '', subCategory: '' });
     setNewCurrency('');
     setNewUser({ profile: UserProfile.USER });
+    
+    // For Church Data, we always start with existing data
+    if (activeTab === 'church') {
+        setNewChurchData(churchData);
+    }
+
     setIsModalOpen(true);
   };
 
@@ -183,6 +201,44 @@ const MasterData: React.FC<MasterDataProps> = ({
       }
   };
 
+  // --- CHURCH DATA LOGIC ---
+  
+  // Helper to convert Google Drive view links to direct image links
+  const convertDriveLink = (url: string) => {
+      if (!url) return '';
+      // Pattern: https://drive.google.com/file/d/[ID]/view...
+      if (url.includes('drive.google.com') && url.includes('/file/d/')) {
+          try {
+             const id = url.split('/file/d/')[1].split('/')[0];
+             // Using universal export=view for image rendering
+             return `https://drive.google.com/uc?export=view&id=${id}`;
+          } catch(e) {
+             console.warn("Could not convert Drive link", e);
+             return url;
+          }
+      }
+      return url;
+  };
+
+  const saveChurchHandler = async () => {
+      if (newChurchData.name) {
+          setIsProcessing(true);
+          try {
+              const processedData = {
+                  ...newChurchData,
+                  logoUrl: convertDriveLink(newChurchData.logoUrl || '')
+              };
+              await saveChurchData(processedData);
+              showToast("Datos de la iglesia actualizados", 'success');
+              closeModal();
+          } finally {
+              setIsProcessing(false);
+          }
+      } else {
+          showToast("El nombre de la iglesia es obligatorio", 'error');
+      }
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden min-h-[500px]">
       {/* Tabs */}
@@ -211,6 +267,12 @@ const MasterData: React.FC<MasterDataProps> = ({
         >
           Usuarios
         </button>
+        <button 
+          onClick={() => setActiveTab('church')}
+          className={`flex-1 py-4 px-4 text-center font-medium transition-colors whitespace-nowrap ${activeTab === 'church' ? 'bg-[#1B365D] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+        >
+          Datos Iglesia
+        </button>
       </div>
 
       <div className="p-6">
@@ -219,15 +281,25 @@ const MasterData: React.FC<MasterDataProps> = ({
                 {activeTab === 'centers' ? 'Gestión de Centros' : 
                  activeTab === 'types' ? 'Tipos de Movimiento' : 
                  activeTab === 'currencies' ? 'Monedas Habilitadas' : 
+                 activeTab === 'church' ? 'Configuración Institucional' :
                  'Gestión de Usuarios'}
             </h2>
             
-            <button 
-                onClick={openModal}
-                className="bg-[#84cc16] text-white px-4 py-2 rounded-lg hover:bg-lime-600 flex items-center gap-2 shadow-sm font-medium"
-            >
-                <Plus size={18} /> Agregar Nuevo
-            </button>
+            {activeTab !== 'church' ? (
+                <button 
+                    onClick={openModal}
+                    className="bg-[#84cc16] text-white px-4 py-2 rounded-lg hover:bg-lime-600 flex items-center gap-2 shadow-sm font-medium"
+                >
+                    <Plus size={18} /> Agregar Nuevo
+                </button>
+            ) : (
+                <button 
+                    onClick={openModal}
+                    className="bg-[#1B365D] text-white px-4 py-2 rounded-lg hover:bg-[#152a48] flex items-center gap-2 shadow-sm font-medium"
+                >
+                    <Pencil size={18} /> Editar Datos
+                </button>
+            )}
         </div>
 
         {/* CENTERS LIST */}
@@ -354,6 +426,45 @@ const MasterData: React.FC<MasterDataProps> = ({
             </div>
         )}
 
+        {/* CHURCH DATA VIEW */}
+        {activeTab === 'church' && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 max-w-2xl mx-auto text-center">
+                <div className="w-24 h-24 bg-white rounded-full mx-auto mb-4 flex items-center justify-center border-2 border-slate-200 shadow-sm overflow-hidden">
+                    {churchData.logoUrl ? (
+                        <img src={churchData.logoUrl} alt="Logo Iglesia" className="w-full h-full object-contain" />
+                    ) : (
+                        <Home size={40} className="text-slate-300" />
+                    )}
+                </div>
+                
+                <h3 className="text-2xl font-bold text-[#1B365D] mb-1">{churchData.name || 'Nombre no configurado'}</h3>
+                <p className="text-slate-500 text-sm mb-6 flex items-center justify-center gap-1">
+                    <MapPin size={14} /> {churchData.address || 'Dirección no configurada'}
+                </p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-50 text-[#1B365D] rounded-lg">
+                            <UserIcon size={20} />
+                        </div>
+                        <div className="text-left">
+                            <span className="block text-xs text-slate-400 uppercase font-bold">Pastor</span>
+                            <span className="block font-medium text-slate-700">{churchData.pastor || '-'}</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-green-50 text-green-700 rounded-lg">
+                            <Phone size={20} />
+                        </div>
+                        <div className="text-left">
+                            <span className="block text-xs text-slate-400 uppercase font-bold">Celular / Tel.</span>
+                            <span className="block font-medium text-slate-700">{churchData.phone || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
       </div>
 
       {/* --- MODAL --- */}
@@ -364,7 +475,8 @@ const MasterData: React.FC<MasterDataProps> = ({
                     <h3 className="text-white font-bold text-lg">
                         {activeTab === 'centers' ? (editingId ? 'Editar Centro' : 'Nuevo Centro') : 
                          activeTab === 'types' ? (editingId ? 'Editar Tipo de Movimiento' : 'Nuevo Tipo de Movimiento') : 
-                         activeTab === 'users' ? (editingId ? 'Editar Usuario' : 'Nuevo Usuario') : 'Nueva Moneda'}
+                         activeTab === 'users' ? (editingId ? 'Editar Usuario' : 'Nuevo Usuario') : 
+                         activeTab === 'church' ? 'Configurar Datos de Iglesia' : 'Nueva Moneda'}
                     </h3>
                     <button onClick={closeModal} className="text-white/80 hover:text-white transition-colors">
                         <X size={20} />
@@ -535,6 +647,63 @@ const MasterData: React.FC<MasterDataProps> = ({
                         </div>
                     )}
 
+                    {/* CHURCH DATA FORM */}
+                    {activeTab === 'church' && (
+                        <div className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-500">Nombre de la Iglesia *</label>
+                                <div className="relative">
+                                    <Home className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
+                                    <input className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-[#1B365D]" 
+                                        placeholder="Ej: Peniel (MCyM)" value={newChurchData.name} onChange={e => setNewChurchData({...newChurchData, name: e.target.value})} />
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-500">Dirección</label>
+                                <div className="relative">
+                                    <MapPin className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
+                                    <input className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-[#1B365D]" 
+                                        placeholder="Ej: Av. Principal 123" value={newChurchData.address || ''} onChange={e => setNewChurchData({...newChurchData, address: e.target.value})} />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-slate-500">Pastor</label>
+                                    <div className="relative">
+                                        <UserIcon className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
+                                        <input className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-[#1B365D]" 
+                                            placeholder="Nombre Pastor" value={newChurchData.pastor || ''} onChange={e => setNewChurchData({...newChurchData, pastor: e.target.value})} />
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-slate-500">Teléfono</label>
+                                    <div className="relative">
+                                        <Phone className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
+                                        <input className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-[#1B365D]" 
+                                            placeholder="+54 9..." value={newChurchData.phone || ''} onChange={e => setNewChurchData({...newChurchData, phone: e.target.value})} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold text-slate-500">Logo (Enlace Google Drive)</label>
+                                <div className="relative">
+                                    <Link className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
+                                    <input className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-[#1B365D]" 
+                                        placeholder="Pegar enlace de compartir aquí..." value={newChurchData.logoUrl || ''} onChange={e => setNewChurchData({...newChurchData, logoUrl: e.target.value})} />
+                                </div>
+                                <div className="bg-blue-50 p-2 rounded text-[10px] text-blue-700 flex gap-2">
+                                    <Info size={14} className="shrink-0 mt-0.5" />
+                                    <span>
+                                        Pega el enlace de "Compartir" de Google Drive. El sistema lo convertirá automáticamente para que sea visible. Asegúrate que el archivo esté configurado como "Público" (Cualquier persona con el enlace).
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                 </div>
 
                 <div className="bg-slate-50 px-6 py-4 flex justify-end gap-3 border-t">
@@ -548,6 +717,7 @@ const MasterData: React.FC<MasterDataProps> = ({
                             if (activeTab === 'types') saveTypeHandler();
                             if (activeTab === 'currencies') addCurrency();
                             if (activeTab === 'users') saveUserHandler();
+                            if (activeTab === 'church') saveChurchHandler();
                         }}
                         className="px-4 py-2 bg-[#1B365D] text-white font-medium rounded-lg hover:bg-[#152a48] transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
                     >

@@ -18,7 +18,7 @@ import {
   uploadBytes 
 } from "firebase/storage";
 import { db, storage } from "../firebase";
-import { Transaction, Center, MovementType, User } from "../types";
+import { Transaction, Center, MovementType, User, ChurchData } from "../types";
 import { INITIAL_CENTERS, INITIAL_MOVEMENT_TYPES, INITIAL_USERS, INITIAL_CURRENCIES } from "../constants";
 
 // --- COLLECTIONS ---
@@ -54,7 +54,13 @@ export const seedInitialData = async () => {
         // Config document
         batch.set(doc(db, COLLECTIONS.CONFIG, 'main'), {
           currencies: INITIAL_CURRENCIES,
-          logoUrl: null
+          churchData: {
+            name: 'Peniel (MCyM)',
+            address: '',
+            pastor: '',
+            phone: '',
+            logoUrl: ''
+          }
         });
 
         await batch.commit();
@@ -89,11 +95,15 @@ export const subscribeToTransactions = (callback: (data: Transaction[]) => void)
   });
 };
 
-export const subscribeToConfig = (callback: (currencies: string[], logo: string | null) => void) => {
+export const subscribeToConfig = (callback: (currencies: string[], churchData: ChurchData) => void) => {
   return onSnapshot(doc(db, COLLECTIONS.CONFIG, 'main'), (doc) => {
     if (doc.exists()) {
       const data = doc.data();
-      callback(data.currencies || INITIAL_CURRENCIES, data.logoUrl || null);
+      const defaultChurch: ChurchData = { name: 'Peniel (MCyM)' };
+      callback(data.currencies || INITIAL_CURRENCIES, data.churchData || defaultChurch);
+    } else {
+        // Fallback defaults
+        callback(INITIAL_CURRENCIES, { name: 'Peniel (MCyM)' });
     }
   }, (error) => {
       console.error("Error subscribing to config:", error);
@@ -130,8 +140,8 @@ export const updateCurrencies = async (currencies: string[]) => {
   await setDoc(doc(db, COLLECTIONS.CONFIG, 'main'), { currencies }, { merge: true });
 };
 
-export const updateLogoUrl = async (logoUrl: string | null) => {
-  await setDoc(doc(db, COLLECTIONS.CONFIG, 'main'), { logoUrl }, { merge: true });
+export const saveChurchData = async (churchData: ChurchData) => {
+  await setDoc(doc(db, COLLECTIONS.CONFIG, 'main'), { churchData }, { merge: true });
 };
 
 // --- STORAGE OPERATIONS ---

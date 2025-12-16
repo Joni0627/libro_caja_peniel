@@ -22,6 +22,14 @@ export interface Center {
   responsible?: string;
 }
 
+export interface ChurchData {
+  name: string;
+  address?: string;
+  pastor?: string;
+  phone?: string;
+  logoUrl?: string;
+}
+
 export interface MovementType {
   id: string;
   name: string;

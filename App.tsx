@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Transaction, Center, MovementType, User, UserProfile } from './types';
+import { Transaction, Center, MovementType, User, UserProfile, ChurchData } from './types';
 import TransactionForm from './components/TransactionForm';
 import Dashboard from './components/Dashboard';
 import TransactionList from './components/TransactionList';
@@ -39,6 +39,7 @@ const App: React.FC = () => {
   const [movementTypes, setMovementTypes] = useState<MovementType[]>([]);
   const [currencies, setCurrencies] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [churchData, setChurchData] = useState<ChurchData>({ name: 'Peniel (MCyM)' });
 
   const { showToast } = useToast();
 
@@ -77,8 +78,9 @@ const App: React.FC = () => {
             unsubTypes = subscribeToCollection<MovementType>('movement_types', setMovementTypes);
             unsubUsers = subscribeToCollection<User>('users', setUsers);
             
-            unsubConfig = subscribeToConfig((curr, _logo) => {
+            unsubConfig = subscribeToConfig((curr, cData) => {
                 setCurrencies(curr);
+                if (cData) setChurchData(cData);
             });
 
         } catch (error: any) {
@@ -217,9 +219,12 @@ const App: React.FC = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-3">
+              {churchData.logoUrl && (
+                  <img src={churchData.logoUrl} alt="Logo" className="w-10 h-10 object-contain rounded-full border border-slate-100 shadow-sm" />
+              )}
               <div className="flex flex-col">
-                <h1 className="text-2xl font-bold text-[#1B365D] leading-none tracking-tight">Peniel (MCyM)</h1>
-                <span className="text-xs text-slate-500 font-medium hidden sm:inline mt-1">Libro de Caja Digital</span>
+                <h1 className="text-xl font-bold text-[#1B365D] leading-none tracking-tight">{churchData.name || 'Peniel (MCyM)'}</h1>
+                <span className="text-[10px] text-slate-500 font-medium hidden sm:inline mt-0.5">Libro de Caja Digital</span>
               </div>
             </div>
 
@@ -308,6 +313,7 @@ const App: React.FC = () => {
              movementTypes={movementTypes}
              currencies={currencies}
              users={users}
+             churchData={churchData}
           />
         )}
       </main>
