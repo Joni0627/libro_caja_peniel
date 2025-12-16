@@ -29,7 +29,8 @@ const COLLECTIONS = {
   MOVEMENT_TYPES: 'movement_types',
   USERS: 'users',
   ANNOTATIONS: 'annotations',
-  CONFIG: 'app_config'
+  CONFIG: 'app_config',
+  INVERSIONS: 'inversions'
 };
 
 // --- DATA SEEDING ---
@@ -90,11 +91,13 @@ export const subscribeToConfig = (callback: (currencies: string[], churchData: C
 
 // --- CRUD OPERATIONS ---
 
-export const saveDocument = async (collectionName: string, data: any, id?: string) => {
+export const saveDocument = async (collectionName: string, data: any, id?: string): Promise<string> => {
   if (id) {
     await setDoc(doc(db, collectionName, id), data, { merge: true });
+    return id;
   } else {
-    await addDoc(collection(db, collectionName), data);
+    const docRef = await addDoc(collection(db, collectionName), data);
+    return docRef.id;
   }
 };
 

@@ -67,6 +67,7 @@ export interface Inversion {
   voucher: string; // Número de comprobante
   attachment?: string; // URL o Base64 del adjunto
   status: 'ACTIVE' | 'FINISHED'; // Para saber si ya venció (opcional, por defecto ACTIVE)
+  linkedTransactionId?: string; // ID del movimiento de caja original (Egreso)
 }
 
 export interface DashboardStats {

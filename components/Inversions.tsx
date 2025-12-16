@@ -17,7 +17,7 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
   
   // Modal States
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null); // If not null, delete modal is open
+  const [deleteData, setDeleteData] = useState<Inversion | null>(null); // Changed from ID to whole Object to check linkage
   const [viewImage, setViewImage] = useState<string | null>(null);
 
   // Finish (Cobrar) Modal State
@@ -52,14 +52,30 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
   };
 
   const handleDelete = async () => {
-      if (!deleteId) return;
+      if (!deleteData) return;
+      setIsSaving(true);
       try {
-          await deleteDocument('inversions', deleteId);
-          showToast("Inversión eliminada correctamente", 'success');
-          setDeleteId(null);
+          // 1. Si la inversión tiene un movimiento asociado y NO está finalizada, eliminar el movimiento también
+          // Esto "Reversa" la salida de dinero de la caja
+          if (deleteData.linkedTransactionId && deleteData.status === 'ACTIVE') {
+              try {
+                  await deleteDocument('transactions', deleteData.linkedTransactionId);
+                  console.log("Movimiento vinculado eliminado correctamente");
+              } catch (e) {
+                  console.error("No se pudo eliminar el movimiento vinculado", e);
+              }
+          }
+
+          // 2. Eliminar la inversión
+          await deleteDocument('inversions', deleteData.id);
+          
+          showToast("Inversión anulada/eliminada correctamente", 'success');
+          setDeleteData(null);
       } catch (error) {
           console.error(error);
           showToast("Error al eliminar", 'error');
+      } finally {
+          setIsSaving(false);
       }
   };
 
@@ -94,6 +110,24 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
           };
 
           await saveDocument('inversions', dataToSave, formData.id);
+
+          // ACTUALIZACIÓN EN CASCADA:
+          // Si estamos editando una inversión activa que tiene un movimiento asociado,
+          // actualizamos también el movimiento en la caja para mantener la coherencia.
+          if (formData.id && formData.linkedTransactionId && formData.status === 'ACTIVE') {
+              try {
+                  const txUpdate = {
+                      date: formData.date,
+                      detail: formData.description,
+                      amount: formData.amount
+                  };
+                  await saveDocument('transactions', txUpdate, formData.linkedTransactionId);
+                  console.log("Movimiento vinculado actualizado");
+              } catch(e) {
+                  console.error("Error actualizando movimiento vinculado:", e);
+              }
+          }
+
           showToast(formData.id ? "Inversión actualizada" : "Inversión registrada", 'success');
           setIsFormOpen(false);
       } catch (error) {
@@ -326,7 +360,7 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
                                                 </button>
                                             )}
                                             <button 
-                                                onClick={() => setDeleteId(inv.id)}
+                                                onClick={() => setDeleteData(inv)}
                                                 className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                 title="Eliminar"
                                             >
@@ -555,27 +589,39 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
         )}
 
         {/* --- DELETE CONFIRMATION MODAL --- */}
-        {deleteId && (
+        {deleteData && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
                 <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 text-center animate-in zoom-in duration-200">
                     <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <Trash2 className="w-8 h-8 text-rose-600" />
                     </div>
                     <h3 className="text-xl font-bold text-slate-800 mb-2">¿Eliminar Inversión?</h3>
-                    <p className="text-slate-500 text-sm mb-6">Esta acción no se puede deshacer. Se eliminará el registro de inversión permanentemente.</p>
+                    <p className="text-slate-500 text-sm mb-2">
+                        Esta acción no se puede deshacer.
+                    </p>
                     
-                    <div className="flex gap-3">
+                    {deleteData.status === 'ACTIVE' && deleteData.linkedTransactionId && (
+                        <div className="bg-amber-50 text-amber-800 text-xs p-3 rounded-lg mb-4 text-left border border-amber-100">
+                            <strong>Atención:</strong> Al eliminar esta inversión activa, 
+                            se eliminará automáticamente el movimiento de caja asociado, 
+                            <strong>reversando el egreso y devolviendo el dinero al saldo</strong>.
+                        </div>
+                    )}
+
+                    <div className="flex gap-3 mt-4">
                         <button 
-                            onClick={() => setDeleteId(null)}
+                            onClick={() => setDeleteData(null)}
                             className="flex-1 py-2.5 border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50"
                         >
                             Cancelar
                         </button>
                         <button 
                             onClick={handleDelete}
-                            className="flex-1 py-2.5 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 shadow-sm"
+                            disabled={isSaving}
+                            className="flex-1 py-2.5 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 shadow-sm flex justify-center gap-2 items-center"
                         >
-                            Eliminar
+                            {isSaving && <Loader2 className="w-4 h-4 animate-spin"/>}
+                            {deleteData.status === 'ACTIVE' ? 'Anular y Borrar' : 'Eliminar'}
                         </button>
                     </div>
                 </div>

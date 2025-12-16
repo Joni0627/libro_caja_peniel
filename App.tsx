@@ -141,12 +141,15 @@ const App: React.FC = () => {
             // FIX: Ensure undefined becomes null for Firestore
             attachment: attachmentUrl || null
         };
-        await saveDocument('transactions', transactionToSave);
+        // Get the ID of the new transaction
+        const savedTxId = await saveDocument('transactions', transactionToSave);
 
         // 2. If Inversion Data is present, create Inversion Record automatically
         if (inversionData) {
             const inversionToSave = {
                 ...inversionData,
+                // Link the transaction ID so we can edit/delete both later
+                linkedTransactionId: savedTxId,
                 // Use the same image URL generated above
                 attachment: attachmentUrl || null
             };
