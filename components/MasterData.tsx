@@ -204,6 +204,7 @@ const MasterData: React.FC<MasterDataProps> = ({
   // --- CHURCH DATA LOGIC ---
   
   // Improved Helper to convert Google Drive view links to direct image links using Regex
+  // Updated to use the 'thumbnail' endpoint which is more robust for hotlinking images.
   const convertDriveLink = (url: string) => {
       if (!url) return '';
       
@@ -215,8 +216,8 @@ const MasterData: React.FC<MasterDataProps> = ({
       const match = url.match(idRegex);
       
       if (match && match[1]) {
-          // Construct the direct export link
-          return `https://drive.google.com/uc?export=view&id=${match[1]}`;
+          // Use thumbnail endpoint with w1000 size. This is generally more reliable for images than export=view
+          return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
       }
       
       // Return original if no pattern matched (might be a direct link already)
