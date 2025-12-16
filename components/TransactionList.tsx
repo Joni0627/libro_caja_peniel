@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Transaction, MovementCategory, Center, MovementType } from '../types';
-import { FileText, Filter, ArrowUpRight, ArrowDownRight, Eye, Upload, Calendar, X, Download, Search, ChevronDown, Trash2, Pencil, Plus, EyeOff } from 'lucide-react';
+import { FileText, Filter, ArrowUpRight, ArrowDownRight, Eye, Upload, Calendar, X, Download, Search, ChevronDown, Trash2, Pencil, Plus, EyeOff, FileSpreadsheet, MoreHorizontal } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { deleteDocument, saveDocument, uploadImage } from '../services/firebaseService';
@@ -328,6 +328,56 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
     }
   };
 
+  // --- EXPORT TO EXCEL LOGIC ---
+  const handleExportExcel = () => {
+    if (filteredTransactions.length === 0) {
+        showToast("No hay movimientos para exportar con los filtros actuales.", 'info');
+        return;
+    }
+
+    // CSV Headers
+    const headers = ['Fecha', 'Tipo', 'Categoría', 'Centro', 'Detalle', 'Monto', 'Moneda', 'Incluir en Planilla'];
+    
+    // CSV Rows
+    const rows = filteredTransactions.map(t => {
+        const type = movementTypes.find(m => m.id === t.movementTypeId);
+        const center = centers.find(c => c.id === t.centerId);
+        
+        // Escape quotes for CSV
+        const detailSafe = `"${t.detail.replace(/"/g, '""')}"`;
+        const categorySafe = type ? (type.category === MovementCategory.INCOME ? 'ENTRADA' : 'SALIDA') : '-';
+        
+        // Using semicolon for better Excel compatibility in ES regions, or comma depending on preference.
+        // We use semicolon ';' because in many Spanish regions ',' is the decimal separator.
+        return [
+            t.date,
+            `"${type?.name || ''}"`,
+            categorySafe,
+            `"${center?.name || ''}"`,
+            detailSafe,
+            t.amount.toString().replace('.', ','), // Format number for Excel ES
+            t.currency,
+            t.excludeFromPdf ? 'NO' : 'SI'
+        ].join(';');
+    });
+
+    const csvContent = [headers.join(';'), ...rows].join('\n');
+    
+    // Add BOM for UTF-8 compatibility in Excel
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    const dateStr = filterMode === 'month' ? selectedMonth : `${dateRange.start}_${dateRange.end}`;
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Movimientos_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Archivo Excel descargado.", 'success');
+  };
+
+
   // --- PDF GENERATION LOGIC ---
   const generatePDF = () => {
     // UPDATED: Filter logic to exclude transactions with excludeFromPdf === true
@@ -463,38 +513,52 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
             Movimientos Registrados
         </h3>
         
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-col-reverse sm:flex-row items-center gap-2 w-full sm:w-auto">
             
-            {/* NEW TRANSACTION BUTTON - MOVED HERE */}
+            {/* GROUP: DATA TOOLS (Import/Export) */}
             {isAdmin && (
-                <button 
-                    onClick={handleOpenCreate}
-                    className="flex items-center justify-center gap-2 bg-[#84cc16] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-lime-600 transition-colors shadow-sm flex-1 sm:flex-none"
-                >
-                    <Plus className="w-4 h-4" />
-                    Nuevo Movimiento
-                </button>
-            )}
-
-            {isAdmin && (
-                <>
-                    <button 
+                <div className="flex items-center bg-slate-100 p-1 rounded-lg w-full sm:w-auto">
+                     <button 
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center justify-center gap-2 bg-slate-50 text-[#1B365D] border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 transition-colors flex-1 sm:flex-none"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-slate-600 hover:text-[#1B365D] hover:bg-white px-3 py-2 rounded-md transition-all text-sm font-medium"
+                        title="Importar CSV"
                     >
                         <Upload className="w-4 h-4" />
-                        Importar CSV
+                        <span className="sm:hidden lg:inline">Importar</span>
                     </button>
                     <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
+                    
+                    <div className="w-px h-4 bg-slate-300 mx-1"></div>
+
+                    <button 
+                        onClick={handleExportExcel}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-slate-600 hover:text-green-700 hover:bg-white px-3 py-2 rounded-md transition-all text-sm font-medium"
+                        title="Exportar a Excel"
+                    >
+                        <FileSpreadsheet className="w-4 h-4" />
+                        <span className="sm:hidden lg:inline">Excel</span>
+                    </button>
 
                     <button 
                         onClick={() => setIsPdfModalOpen(true)}
-                        className="flex items-center justify-center gap-2 bg-[#1B365D] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#152a48] transition-colors shadow-sm flex-1 sm:flex-none"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-slate-600 hover:text-rose-700 hover:bg-white px-3 py-2 rounded-md transition-all text-sm font-medium"
+                        title="Generar PDF"
                     >
                         <FileText className="w-4 h-4" />
-                        Planilla PDF
+                        <span className="sm:hidden lg:inline">PDF</span>
                     </button>
-                </>
+                </div>
+            )}
+
+            {/* PRIMARY: NEW TRANSACTION */}
+            {isAdmin && (
+                <button 
+                    onClick={handleOpenCreate}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#84cc16] text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-lime-600 transition-colors shadow-sm shadow-lime-200"
+                >
+                    <Plus className="w-5 h-5" />
+                    Nuevo Movimiento
+                </button>
             )}
         </div>
       </div>
