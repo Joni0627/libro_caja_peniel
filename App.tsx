@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Transaction, Center, MovementType, User, UserProfile, ChurchData } from './types';
+import { Transaction, Center, MovementType, User, UserProfile, ChurchData, Inversion, Annotation } from './types';
 import TransactionForm from './components/TransactionForm';
 import Dashboard from './components/Dashboard';
 import TransactionList from './components/TransactionList';
@@ -40,6 +40,10 @@ const App: React.FC = () => {
   const [currencies, setCurrencies] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [churchData, setChurchData] = useState<ChurchData>({ name: 'Peniel (MCyM)' });
+  
+  // -- CACHED DATA STATES (Moved from children to here) --
+  const [inversions, setInversions] = useState<Inversion[]>([]);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
 
   const { showToast } = useToast();
 
@@ -65,6 +69,8 @@ const App: React.FC = () => {
     let unsubTypes: () => void;
     let unsubUsers: () => void;
     let unsubConfig: () => void;
+    let unsubInversions: () => void;
+    let unsubAnnotations: () => void;
 
     const initData = async () => {
         if (!currentUser) return; // Don't fetch data if not logged in
@@ -77,6 +83,14 @@ const App: React.FC = () => {
             unsubCenters = subscribeToCollection<Center>('centers', setCenters);
             unsubTypes = subscribeToCollection<MovementType>('movement_types', setMovementTypes);
             unsubUsers = subscribeToCollection<User>('users', setUsers);
+            
+            // Centralized Subscriptions for Cache
+            unsubInversions = subscribeToCollection<Inversion>('inversions', (data) => {
+                setInversions(data.sort((a, b) => b.date.localeCompare(a.date)));
+            });
+            unsubAnnotations = subscribeToCollection<Annotation>('annotations', (data) => {
+                setAnnotations(data.sort((a, b) => b.date.localeCompare(a.date)));
+            });
             
             unsubConfig = subscribeToConfig((curr, cData) => {
                 setCurrencies(curr);
@@ -108,6 +122,8 @@ const App: React.FC = () => {
         if(unsubTypes) unsubTypes();
         if(unsubUsers) unsubUsers();
         if(unsubConfig) unsubConfig();
+        if(unsubInversions) unsubInversions();
+        if(unsubAnnotations) unsubAnnotations();
     };
   }, [currentUser]); // Re-run when user logs in/out
 
@@ -297,14 +313,14 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* Inversions Tab */}
+        {/* Inversions Tab - Now receiving data as props */}
         {activeTab === 'inversions' && (
-          <Inversions isAdmin={isAdmin} />
+          <Inversions isAdmin={isAdmin} inversions={inversions} />
         )}
         
-        {/* Annotation Tab */}
+        {/* Annotation Tab - Now receiving data as props */}
         {activeTab === 'annotations' && isAdmin && (
-          <Annotations />
+          <Annotations annotations={annotations} />
         )}
 
         {activeTab === 'masters' && isAdmin && (

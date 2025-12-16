@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Inversion } from '../types';
 import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save } from 'lucide-react';
-import { subscribeToCollection, saveDocument, deleteDocument, uploadImage } from '../services/firebaseService';
+import { saveDocument, deleteDocument, uploadImage } from '../services/firebaseService';
 import { useToast } from './Toast';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface InversionsProps {
   isAdmin: boolean;
+  inversions: Inversion[]; // Ahora recibe los datos, no los busca
 }
 
-const Inversions: React.FC<InversionsProps> = ({ isAdmin }) => {
-  const [inversions, setInversions] = useState<Inversion[]>([]);
+const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
+  // Eliminado estado interno 'inversions' y 'useEffect' de suscripción
+  
   const { showToast } = useToast();
   
   // Modal States
@@ -31,13 +33,6 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin }) => {
   const [formData, setFormData] = useState<Partial<Inversion>>(initialFormState);
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const unsub = subscribeToCollection<Inversion>('inversions', (data) => {
-        setInversions(data.sort((a, b) => b.date.localeCompare(a.date)));
-    });
-    return () => unsub();
-  }, []);
 
   // --- CRUD HANDLERS ---
 

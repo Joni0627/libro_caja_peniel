@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Annotation } from '../types';
 import { Plus, Trash2, Calendar, ClipboardList, Pencil, X } from 'lucide-react';
-import { saveDocument, deleteDocument, subscribeToCollection } from '../services/firebaseService';
+import { saveDocument, deleteDocument } from '../services/firebaseService';
 import { useToast } from './Toast';
 
-const Annotations: React.FC = () => {
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+interface AnnotationsProps {
+    annotations: Annotation[]; // Recibir datos por props
+}
+
+const Annotations: React.FC<AnnotationsProps> = ({ annotations }) => {
+  // Eliminado estado interno 'annotations' y 'useEffect'
   
   // Form State
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -17,14 +21,6 @@ const Annotations: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   
   const { showToast } = useToast();
-
-  useEffect(() => {
-    const unsub = subscribeToCollection<Annotation>('annotations', (data) => {
-        // Sort by date desc
-        setAnnotations(data.sort((a, b) => b.date.localeCompare(a.date)));
-    });
-    return () => unsub();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
