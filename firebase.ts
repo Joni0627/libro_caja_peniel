@@ -13,6 +13,19 @@ const getEnv = (key: string) => {
   }
 };
 
+// Verificación de variables críticas para debugging rápido
+const requiredEnvVars = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_APP_ID'
+];
+
+const missingVars = requiredEnvVars.filter(key => !getEnv(key));
+if (missingVars.length > 0) {
+  console.error(`🔴 FALTAN VARIABLES DE ENTORNO EN VERCEL: ${missingVars.join(', ')}. La app no funcionará correctamente.`);
+}
+
 // Configuración de Firebase
 // Se ha configurado explícitamente el storageBucket según lo proporcionado
 const firebaseConfig = {
@@ -36,10 +49,12 @@ try {
   db = getFirestore(app);
   storage = getStorage(app);
   auth = getAuth(app);
-  console.log("Firebase inicializado correctamente con Storage Bucket:", firebaseConfig.storageBucket);
-} catch (error) {
-  console.error("Error en la inicialización de Firebase:", error);
-  console.warn("La aplicación se ha iniciado sin conexión completa a Firebase.");
+  console.log("Firebase inicializado correctamente.");
+} catch (error: any) {
+  console.error("Error CRÍTICO en la inicialización de Firebase:", error);
+  if (error.code === 'app/invalid-configuration-options') {
+    console.error("Revisa que hayas cargado todas las variables de entorno en Vercel (Settings > Environment Variables).");
+  }
 }
 
 export { db, storage, auth };

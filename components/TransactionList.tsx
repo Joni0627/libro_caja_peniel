@@ -42,6 +42,9 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [pdfTargetMonth, setPdfTargetMonth] = useState<string>(new Date().toISOString().slice(0, 7));
 
+  // --- IMAGE VIEWER STATE ---
+  const [viewImage, setViewImage] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
 
@@ -714,7 +717,11 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         {t.attachment ? (
-                                            <button className="text-[#1B365D] hover:text-[#152a48] transition-colors p-1.5 hover:bg-slate-100 rounded-full" title="Ver adjunto">
+                                            <button 
+                                                onClick={() => setViewImage(t.attachment || null)}
+                                                className="text-[#1B365D] hover:text-[#152a48] transition-colors p-1.5 hover:bg-slate-100 rounded-full" 
+                                                title="Ver adjunto"
+                                            >
                                                 <Eye className="w-4 h-4" />
                                             </button>
                                         ) : (
@@ -847,6 +854,16 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                 </div>
             </div>
         </div>
+      )}
+
+      {/* --- IMAGE VIEWER MODAL --- */}
+      {viewImage && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90" onClick={() => setViewImage(null)}>
+              <button className="absolute top-4 right-4 text-white hover:text-gray-300">
+                  <X size={32} />
+              </button>
+              <img src={viewImage} alt="Comprobante" className="max-w-full max-h-[90vh] rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
+          </div>
       )}
     </div>
   );
