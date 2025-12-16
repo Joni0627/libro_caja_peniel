@@ -32,6 +32,8 @@ export const INITIAL_MOVEMENT_TYPES: MovementType[] = [
   { id: 'ing_contribuciones', name: 'CONTRIBUCIONES', category: MovementCategory.INCOME, subCategory: 'ENTRADAS' },
   { id: 'ing_otras_entradas', name: 'OTRAS ENTRADAS', category: MovementCategory.INCOME, subCategory: 'ENTRADAS' },
   { id: 'ing_subsidios', name: 'SUBSIDIOS O CONVENIOS ESTATALES', category: MovementCategory.INCOME, subCategory: 'ENTRADAS' },
+  // Nuevo Tipo para Recupero de Inversión
+  { id: 'ing_recupero_inversion', name: 'RECUPERO INVERSIONES PENIEL', category: MovementCategory.INCOME, subCategory: 'ENTRADAS' },
   
   // --- EGRESOS: INVERSIONES ---
   { id: 'egr_construcciones', name: 'CONSTRUCCIONES', category: MovementCategory.EXPENSE, subCategory: 'INVERSIONES' },

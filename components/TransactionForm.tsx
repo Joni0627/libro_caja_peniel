@@ -132,6 +132,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             date,
             description: detail, // Link description
             amount: parseFloat(amount),
+            currency: currency, // Save currency in Inversion too
             days: invDays,
             interest: parseFloat(invInterest) || 0,
             voucher: invVoucher,

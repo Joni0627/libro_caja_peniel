@@ -331,7 +331,12 @@ const App: React.FC = () => {
 
         {/* Inversions Tab - Now receiving data as props */}
         {activeTab === 'inversions' && (
-          <Inversions isAdmin={isAdmin} inversions={inversions} />
+          <Inversions 
+              isAdmin={isAdmin} 
+              inversions={inversions}
+              centers={centers}
+              currencies={currencies}
+          />
         )}
         
         {/* Annotation Tab - Now receiving data as props */}

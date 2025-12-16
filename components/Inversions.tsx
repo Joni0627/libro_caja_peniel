@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { Inversion } from '../types';
+import { Inversion, Center } from '../types';
 import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save, CheckCircle } from 'lucide-react';
 import { saveDocument, deleteDocument, uploadImage } from '../services/firebaseService';
 import { useToast } from './Toast';
@@ -8,9 +8,11 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 interface InversionsProps {
   isAdmin: boolean;
   inversions: Inversion[]; // Ahora recibe los datos, no los busca
+  centers?: Center[]; // Optional to avoid strict dep if not passed in some context
+  currencies?: string[];
 }
 
-const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
+const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = [], currencies = ['ARS'] }) => {
   // Eliminado estado interno 'inversions' y 'useEffect' de suscripción
   
   const { showToast } = useToast();
@@ -30,6 +32,7 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
     date: new Date().toISOString().split('T')[0],
     description: '',
     amount: 0,
+    currency: currencies[0] || 'ARS', // Default Currency
     days: 30,
     interest: 0,
     voucher: '',
@@ -47,7 +50,10 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
   };
 
   const handleCreate = () => {
-      setFormData(initialFormState);
+      setFormData({
+          ...initialFormState,
+          currency: currencies[0] || 'ARS'
+      });
       setIsFormOpen(true);
   };
 
@@ -104,31 +110,62 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
               attachmentUrl = await uploadImage(attachmentUrl, fileName);
           }
 
-          const dataToSave = {
-              ...formData,
-              attachment: attachmentUrl || null
-          };
+          // --- LOGICA DE CREACIÓN VS EDICIÓN ---
+          
+          if (formData.id) {
+              // EDICIÓN
+              const dataToSave = {
+                  ...formData,
+                  attachment: attachmentUrl || null
+              };
+              await saveDocument('inversions', dataToSave, formData.id);
 
-          await saveDocument('inversions', dataToSave, formData.id);
-
-          // ACTUALIZACIÓN EN CASCADA:
-          // Si estamos editando una inversión activa que tiene un movimiento asociado,
-          // actualizamos también el movimiento en la caja para mantener la coherencia.
-          if (formData.id && formData.linkedTransactionId && formData.status === 'ACTIVE') {
-              try {
-                  const txUpdate = {
-                      date: formData.date,
-                      detail: formData.description,
-                      amount: formData.amount
-                  };
-                  await saveDocument('transactions', txUpdate, formData.linkedTransactionId);
-                  console.log("Movimiento vinculado actualizado");
-              } catch(e) {
-                  console.error("Error actualizando movimiento vinculado:", e);
+              // Actualización en cascada del movimiento
+              if (formData.linkedTransactionId && formData.status === 'ACTIVE') {
+                  try {
+                      const txUpdate = {
+                          date: formData.date,
+                          detail: formData.description,
+                          amount: formData.amount,
+                          currency: formData.currency
+                      };
+                      await saveDocument('transactions', txUpdate, formData.linkedTransactionId);
+                      console.log("Movimiento vinculado actualizado");
+                  } catch(e) {
+                      console.error("Error actualizando movimiento vinculado:", e);
+                  }
               }
+              showToast("Inversión actualizada", 'success');
+
+          } else {
+              // CREACIÓN NUEVA
+              // 1. Crear Movimiento de Caja (Egreso) - INVERSIONES PENIEL
+              const newTx = {
+                 date: formData.date,
+                 centerId: centers.length > 0 ? centers[0].id : 'c1', // Default center
+                 movementTypeId: 'egr_inversiones', // ID fijo para "INVERSIONES PENIEL"
+                 detail: formData.description || 'Nueva Inversión',
+                 amount: formData.amount,
+                 currency: formData.currency || 'ARS',
+                 attachment: attachmentUrl || null,
+                 excludeFromPdf: false // Las salidas de inversión SÍ van al PDF generalmente, o según criterio, por defecto SI.
+              };
+             
+              // Guardar transacción y obtener ID
+              const savedTxId = await saveDocument('transactions', newTx);
+              
+              // 2. Crear Inversión vinculada
+              const dataToSave = {
+                  ...formData,
+                  linkedTransactionId: savedTxId,
+                  attachment: attachmentUrl || null,
+                  status: 'ACTIVE'
+              };
+              
+              await saveDocument('inversions', dataToSave);
+              showToast("Inversión registrada y salida de caja generada", 'success');
           }
 
-          showToast(formData.id ? "Inversión actualizada" : "Inversión registrada", 'success');
           setIsFormOpen(false);
       } catch (error) {
           console.error(error);
@@ -152,7 +189,7 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
       if (!finishModal.data) return;
       
       const interestAmount = parseFloat(finishInterest);
-      if (isNaN(interestAmount) || interestAmount <= 0) {
+      if (isNaN(interestAmount) || interestAmount < 0) {
           showToast("El monto del interés debe ser válido", 'error');
           return;
       }
@@ -163,29 +200,51 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
 
       setIsSaving(true);
       try {
-          // 1. Create Income Transaction
-          const newTransaction = {
-              date: new Date().toISOString().split('T')[0],
-              centerId: 'c1', // Default to HQ or grab from inversion context if added
-              movementTypeId: 'ing_otras_entradas', // ID HARDCODED based on user requirement
-              detail: `${finishModal.data.description} - Intereses plazo fijo Mes ${finishMonth}`,
-              amount: interestAmount,
-              currency: 'ARS', // Default to ARS or check inversion currency if implemented
-              attachment: null,
-              excludeFromPdf: false
-          };
-          
-          await saveDocument('transactions', newTransaction);
+          const finishDate = new Date().toISOString().split('T')[0];
+          const centerId = centers.length > 0 ? centers[0].id : 'c1';
 
-          // 2. Update Inversion Status to FINISHED
+          // 1. CREAR MOVIMIENTO: RECUPERO DE CAPITAL
+          // Tipo: RECUPERO INVERSIONES PENIEL (ing_recupero_inversion)
+          // Excluir del PDF: SI
+          const capitalTransaction = {
+              date: finishDate,
+              centerId: centerId,
+              movementTypeId: 'ing_recupero_inversion', // Debe coincidir con ID en constants.ts
+              detail: `Recupero Capital - ${finishModal.data.description}`,
+              amount: finishModal.data.amount, // El capital original
+              currency: finishModal.data.currency || 'ARS',
+              attachment: null,
+              excludeFromPdf: true // REQUISITO: No mostrar en PDF
+          };
+          await saveDocument('transactions', capitalTransaction);
+
+
+          // 2. CREAR MOVIMIENTO: INTERÉS GANADO
+          // Tipo: OTRAS ENTRADAS (ing_otras_entradas)
+          // Excluir del PDF: NO
+          if (interestAmount > 0) {
+              const interestTransaction = {
+                  date: finishDate,
+                  centerId: centerId,
+                  movementTypeId: 'ing_otras_entradas', // Usamos "Otras Entradas" para la ganancia
+                  detail: `Interés Ganado - ${finishModal.data.description} - Mes ${finishMonth}`,
+                  amount: interestAmount,
+                  currency: finishModal.data.currency || 'ARS',
+                  attachment: null,
+                  excludeFromPdf: false // REQUISITO: Mostrar en PDF
+              };
+              await saveDocument('transactions', interestTransaction);
+          }
+
+          // 3. ACTUALIZAR ESTADO INVERSIÓN
           await saveDocument('inversions', { status: 'FINISHED' }, finishModal.data.id);
 
-          showToast("Interés cobrado y registrado en Caja exitosamente.", 'success');
+          showToast("Inversión finalizada: Capital recuperado e Interés registrado.", 'success');
           setFinishModal({ isOpen: false, data: null });
 
       } catch (error) {
           console.error("Error finishing inversion:", error);
-          showToast("Error al procesar el cobro de interés.", 'error');
+          showToast("Error al procesar el cobro.", 'error');
       } finally {
           setIsSaving(false);
       }
@@ -314,6 +373,7 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
                                         <span className="flex items-center gap-1"><Calendar size={14} /> {inv.date}</span>
                                         <span className="flex items-center gap-1"><Clock size={14} /> {inv.days} días</span>
                                         <span className="flex items-center gap-1"><Hash size={14} /> Comp: {inv.voucher}</span>
+                                        <span className="flex items-center gap-1 font-bold bg-slate-100 px-1 rounded">{inv.currency || 'ARS'}</span>
                                     </div>
                                     {isFinished && <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-2 py-0.5 rounded mt-2 inline-block">FINALIZADA</span>}
                                 </div>
@@ -449,6 +509,34 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
                                 </div>
                             </div>
                             <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Moneda</label>
+                                <select 
+                                    value={formData.currency}
+                                    onChange={(e) => setFormData({...formData, currency: e.target.value})}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none bg-white"
+                                >
+                                    {currencies.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                        </div>
+
+                         <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Plazo (Días)</label>
+                                <div className="relative">
+                                    <Clock className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
+                                    <input 
+                                        type="number"
+                                        required
+                                        min="1"
+                                        placeholder="Ej: 30"
+                                        value={formData.days}
+                                        onChange={e => setFormData({...formData, days: parseInt(e.target.value)})}
+                                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
+                                    />
+                                </div>
+                            </div>
+                            <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Interés Estimado</label>
                                 <div className="relative">
                                     <DollarSign className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
@@ -465,21 +553,6 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
                             </div>
                         </div>
 
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Plazo (Días)</label>
-                            <div className="relative">
-                                <Clock className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
-                                <input 
-                                    type="number"
-                                    required
-                                    min="1"
-                                    placeholder="Ej: 30"
-                                    value={formData.days}
-                                    onChange={e => setFormData({...formData, days: parseInt(e.target.value)})}
-                                    className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
-                                />
-                            </div>
-                        </div>
 
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Adjunto / Comprobante</label>

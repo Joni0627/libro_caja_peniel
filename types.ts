@@ -62,6 +62,7 @@ export interface Inversion {
   date: string;
   description: string;
   amount: number;
+  currency?: string; // Nuevo: Para saber la moneda de la inversión
   days: number; // Plazo en días
   interest: number; // Monto de interés estimado o tasa
   voucher: string; // Número de comprobante
