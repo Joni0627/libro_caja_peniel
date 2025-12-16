@@ -154,21 +154,33 @@ export const uploadImage = async (file: File | string, path: string): Promise<st
   try {
       const storageRef = ref(storage, path);
       
+      // Promesa de timeout para evitar carga infinita
+      const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("La subida tardó demasiado. Verifica tu conexión o los permisos de Storage.")), 15000);
+      });
+
+      let uploadPromise;
+
       if (typeof file === 'string') {
         // It's a base64 string
-        await uploadString(storageRef, file, 'data_url');
+        uploadPromise = uploadString(storageRef, file, 'data_url');
       } else {
         // It's a File object
-        await uploadBytes(storageRef, file);
+        uploadPromise = uploadBytes(storageRef, file);
       }
+      
+      // Carrera entre la subida y el timeout
+      await Promise.race([uploadPromise, timeoutPromise]);
       
       return await getDownloadURL(storageRef);
   } catch (error: any) {
       console.error("Upload error details:", error);
       if (error.code === 'storage/unauthorized') {
-          throw new Error("No tienes permisos para subir archivos.");
+          throw new Error("No tienes permisos para subir archivos. Revisa las reglas de Firebase Storage.");
       } else if (error.code === 'storage/retry-limit-exceeded') {
           throw new Error("La subida tardó demasiado. Tu conexión puede ser inestable.");
+      } else if (error.code === 'storage/unknown') {
+          throw new Error("Error desconocido de Storage. ¿Configuraste CORS?");
       }
       throw error;
   }
