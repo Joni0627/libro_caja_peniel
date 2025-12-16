@@ -3,7 +3,6 @@ import {
   doc, 
   setDoc, 
   addDoc, 
-  updateDoc, 
   deleteDoc, 
   onSnapshot, 
   query, 
@@ -30,10 +29,10 @@ const COLLECTIONS = {
   MOVEMENT_TYPES: 'movement_types',
   USERS: 'users',
   ANNOTATIONS: 'annotations',
-  CONFIG: 'app_config' // For currencies and logo
+  CONFIG: 'app_config'
 };
 
-// --- DATA SEEDING (Run once if empty) ---
+// --- DATA SEEDING ---
 export const seedInitialData = async () => {
   try {
       const centersSnap = await getDocs(collection(db, COLLECTIONS.CENTERS));
@@ -41,28 +40,13 @@ export const seedInitialData = async () => {
         console.log("Seeding Initial Data...");
         const batch = writeBatch(db);
         
-        INITIAL_CENTERS.forEach(c => {
-          batch.set(doc(db, COLLECTIONS.CENTERS, c.id), c);
-        });
-
-        INITIAL_MOVEMENT_TYPES.forEach(m => {
-          batch.set(doc(db, COLLECTIONS.MOVEMENT_TYPES, m.id), m);
-        });
-
-        INITIAL_USERS.forEach(u => {
-          batch.set(doc(db, COLLECTIONS.USERS, u.id), u);
-        });
+        INITIAL_CENTERS.forEach(c => batch.set(doc(db, COLLECTIONS.CENTERS, c.id), c));
+        INITIAL_MOVEMENT_TYPES.forEach(m => batch.set(doc(db, COLLECTIONS.MOVEMENT_TYPES, m.id), m));
+        INITIAL_USERS.forEach(u => batch.set(doc(db, COLLECTIONS.USERS, u.id), u));
         
-        // Config document
         batch.set(doc(db, COLLECTIONS.CONFIG, 'main'), {
           currencies: INITIAL_CURRENCIES,
-          churchData: {
-            name: 'Peniel (MCyM)',
-            address: '',
-            pastor: '',
-            phone: '',
-            logoUrl: ''
-          }
+          churchData: { name: 'Peniel (MCyM)', address: '', pastor: '', phone: '', logoUrl: '' }
         });
 
         await batch.commit();
@@ -70,7 +54,7 @@ export const seedInitialData = async () => {
       }
   } catch (error) {
       console.error("Error en seedInitialData:", error);
-      throw error; // Re-throw so App.tsx catches it
+      throw error; 
   }
 };
 
@@ -81,20 +65,15 @@ export const subscribeToCollection = <T>(collectionName: string, callback: (data
   return onSnapshot(q, (snapshot) => {
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
     callback(data);
-  }, (error) => {
-      console.error(`Error subscribing to ${collectionName}:`, error);
-  });
+  }, (error) => console.error(`Error subscribing to ${collectionName}:`, error));
 };
 
 export const subscribeToTransactions = (callback: (data: Transaction[]) => void) => {
-  // Order by date desc
   const q = query(collection(db, COLLECTIONS.TRANSACTIONS), orderBy('date', 'desc'));
   return onSnapshot(q, (snapshot) => {
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
     callback(data);
-  }, (error) => {
-      console.error("Error subscribing to transactions:", error);
-  });
+  }, (error) => console.error("Error subscribing to transactions:", error));
 };
 
 export const subscribeToConfig = (callback: (currencies: string[], churchData: ChurchData) => void) => {
@@ -104,17 +83,13 @@ export const subscribeToConfig = (callback: (currencies: string[], churchData: C
       const defaultChurch: ChurchData = { name: 'Peniel (MCyM)' };
       callback(data.currencies || INITIAL_CURRENCIES, data.churchData || defaultChurch);
     } else {
-        // Fallback defaults
-        callback(INITIAL_CURRENCIES, { name: 'Peniel (MCyM)' });
+      callback(INITIAL_CURRENCIES, { name: 'Peniel (MCyM)' });
     }
-  }, (error) => {
-      console.error("Error subscribing to config:", error);
-  });
+  }, (error) => console.error("Error subscribing to config:", error));
 };
 
 // --- CRUD OPERATIONS ---
 
-// Generic Add/Update
 export const saveDocument = async (collectionName: string, data: any, id?: string) => {
   if (id) {
     await setDoc(doc(db, collectionName, id), data, { merge: true });
@@ -123,81 +98,88 @@ export const saveDocument = async (collectionName: string, data: any, id?: strin
   }
 };
 
-// Helper: Extraer referencia segura desde URL usando Regex
+// --- HELPERS DE STORAGE MEJORADOS ---
+
 const getStorageRefFromUrl = (url: string) => {
+    if (!url.includes('/o/')) return null;
+
     try {
-        // Estrategia: Ignorar el dominio y buscar el patrón /o/[PATH_CODIFICADO]
-        // Esto es mucho más seguro que pasar la URL completa
-        const regex = /\/o\/(.+?)(\?|$)/;
-        const match = url.match(regex);
-        
-        if (match && match[1]) {
-            // Decodificar la ruta (ej: receipts%2Ffoto.jpg -> receipts/foto.jpg)
-            const decodedPath = decodeURIComponent(match[1]);
-            console.log("Intentando borrar archivo en ruta:", decodedPath);
-            return ref(storage, decodedPath);
+        // Estrategia INFALIBLE para Firebase Storage URLs:
+        // 1. Dividir por '/o/' para separar el dominio del path.
+        const parts = url.split('/o/');
+        if (parts.length < 2) return null;
+
+        // 2. Tomar la parte derecha (path + params)
+        let pathAndParams = parts[1];
+
+        // 3. Eliminar query params (todo lo que esté después de '?')
+        const qIndex = pathAndParams.indexOf('?');
+        if (qIndex !== -1) {
+            pathAndParams = pathAndParams.substring(0, qIndex);
         }
 
-        console.warn("No se pudo extraer el path con regex, intentando método nativo...");
-        return ref(storage, url);
+        // 4. Decodificar URL (ej: receipts%2F123.jpg -> receipts/123.jpg)
+        const decodedPath = decodeURIComponent(pathAndParams);
+        
+        console.log(`[Storage] Ruta extraída para borrar: "${decodedPath}"`);
+        
+        // 5. Crear referencia relativa al bucket configurado en firebase.ts
+        return ref(storage, decodedPath);
     } catch (e) {
-        console.error("Error fatal generando referencia de Storage:", e);
+        console.error("[Storage] Error parseando URL:", e);
         return null;
     }
 };
 
-// UPDATED: Delete Document AND associated Storage Image
 export const deleteDocument = async (collectionName: string, id: string) => {
   const docRef = doc(db, collectionName, id);
 
   try {
-      // 1. Obtener el documento antes de borrarlo para ver si tiene adjunto
+      // 1. Obtener datos antes de borrar
       const docSnap = await getDoc(docRef);
       
       if (docSnap.exists()) {
           const data = docSnap.data();
           
-          // Verificar si tiene el campo 'attachment' y parece una URL de Firebase
+          // Verificar adjunto
           if (data.attachment && typeof data.attachment === 'string' && data.attachment.includes('firebasestorage')) {
-              try {
-                  const imageRef = getStorageRefFromUrl(data.attachment);
-                  
-                  if (imageRef) {
-                      await deleteObject(imageRef);
-                      console.log("✅ Imagen adjunta eliminada correctamente de Storage.");
-                  } else {
-                      console.warn("⚠️ No se pudo generar la referencia para el adjunto:", data.attachment);
-                  }
-              } catch (storageError: any) {
-                  // Si el objeto no existe, no es un error crítico para la app, pero lo logueamos
-                  if (storageError.code === 'storage/object-not-found') {
-                      console.log("La imagen ya no existía en Storage, continuando con borrado de registro.");
-                  } else {
-                      console.warn("❌ Error al eliminar imagen de Storage:", storageError);
-                  }
+              console.log("[Storage] Intentando eliminar adjunto...");
+              
+              const imageRef = getStorageRefFromUrl(data.attachment);
+              
+              if (imageRef) {
+                  await deleteObject(imageRef)
+                      .then(() => console.log("[Storage] ✅ Imagen eliminada exitosamente."))
+                      .catch((err) => {
+                          if (err.code === 'storage/object-not-found') {
+                              console.warn("[Storage] La imagen ya no existía (404).");
+                          } else {
+                              console.error("[Storage] ❌ Error al eliminar imagen:", err);
+                          }
+                      });
+              } else {
+                  console.warn("[Storage] No se pudo generar referencia válida para:", data.attachment);
               }
           }
       }
 
-      // 2. Eliminar el documento de Firestore
+      // 2. Eliminar doc de Firestore
       await deleteDoc(docRef);
   } catch (error) {
-      console.error("Error al eliminar documento:", error);
+      console.error("Error eliminando documento:", error);
       throw error;
   }
 };
 
-// Specific Batch Import for Transactions
 export const batchSaveTransactions = async (transactions: Transaction[]) => {
   const batch = writeBatch(db);
   transactions.forEach(t => {
-    const ref = doc(collection(db, COLLECTIONS.TRANSACTIONS)); // Auto ID
+    const ref = doc(collection(db, COLLECTIONS.TRANSACTIONS)); 
     batch.set(ref, { ...t, id: ref.id });
   });
   await batch.commit();
 };
 
-// Config Updates
 export const updateCurrencies = async (currencies: string[]) => {
   await setDoc(doc(db, COLLECTIONS.CONFIG, 'main'), { currencies }, { merge: true });
 };
@@ -206,45 +188,26 @@ export const saveChurchData = async (churchData: ChurchData) => {
   await setDoc(doc(db, COLLECTIONS.CONFIG, 'main'), { churchData }, { merge: true });
 };
 
-// --- STORAGE OPERATIONS ---
+// --- STORAGE UPLOAD ---
 
 export const uploadImage = async (file: File | string, path: string): Promise<string> => {
   if (!storage || !storage.app) {
-      throw new Error("El servicio de almacenamiento no está disponible. Verifica la configuración (VITE_FIREBASE_STORAGE_BUCKET).");
+      throw new Error("Storage no disponible.");
   }
 
   try {
       const storageRef = ref(storage, path);
-      
-      // Metadata para CACHÉ agresivo (1 año).
-      const metadata = {
-        cacheControl: 'public, max-age=31536000', 
-      };
-
-      const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error("La subida tardó demasiado. Verifica tu conexión o los permisos de Storage.")), 15000);
-      });
-
-      let uploadPromise;
+      const metadata = { cacheControl: 'public, max-age=31536000' };
 
       if (typeof file === 'string') {
-        uploadPromise = uploadString(storageRef, file, 'data_url', metadata);
+        await uploadString(storageRef, file, 'data_url', metadata);
       } else {
-        uploadPromise = uploadBytes(storageRef, file, metadata);
+        await uploadBytes(storageRef, file, metadata);
       }
-      
-      await Promise.race([uploadPromise, timeoutPromise]);
       
       return await getDownloadURL(storageRef);
   } catch (error: any) {
-      console.error("Upload error details:", error);
-      if (error.code === 'storage/unauthorized') {
-          throw new Error("No tienes permisos para subir archivos. Revisa las reglas de Firebase Storage.");
-      } else if (error.code === 'storage/retry-limit-exceeded') {
-          throw new Error("La subida tardó demasiado. Tu conexión puede ser inestable.");
-      } else if (error.code === 'storage/unknown') {
-          throw new Error("Error desconocido de Storage. ¿Configuraste CORS?");
-      }
+      console.error("Upload error:", error);
       throw error;
   }
 };

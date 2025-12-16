@@ -21,10 +21,14 @@ interface ErrorBoundaryState {
 
 // Simple Error Boundary to catch crash on load
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = {
-    hasError: false,
-    error: null
-  };
+  // Fix: Explicit constructor to ensure props are correctly typed and initialized
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null
+    };
+  }
 
   static getDerivedStateFromError(error: any) {
     return { hasError: true, error };
