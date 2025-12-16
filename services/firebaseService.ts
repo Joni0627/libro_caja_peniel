@@ -123,6 +123,36 @@ export const saveDocument = async (collectionName: string, data: any, id?: strin
   }
 };
 
+// Helper: Extraer referencia segura desde URL
+const getStorageRefFromUrl = (url: string) => {
+    try {
+        // Intento 1: Método estándar del SDK (funciona el 90% de las veces)
+        return ref(storage, url);
+    } catch (e) {
+        console.warn("Fallo ref directa, intentando extracción manual...", e);
+        try {
+            // Intento 2: Parseo manual de la URL para obtener la ruta decodificada
+            // Las URLs de Firebase son tipo: .../b/[BUCKET]/o/[PATH]?alt=...
+            const pathStart = url.indexOf('/o/');
+            if (pathStart === -1) return null;
+            
+            // Extraer todo después de /o/ y antes de ?
+            let path = url.substring(pathStart + 3);
+            const queryStart = path.indexOf('?');
+            if (queryStart !== -1) {
+                path = path.substring(0, queryStart);
+            }
+            
+            // IMPORTANTE: Decodificar (ej: receipts%2Ffoto.jpg -> receipts/foto.jpg)
+            const decodedPath = decodeURIComponent(path);
+            return ref(storage, decodedPath);
+        } catch (e2) {
+            console.error("No se pudo parsear la URL de Storage:", url);
+            return null;
+        }
+    }
+};
+
 // UPDATED: Delete Document AND associated Storage Image
 export const deleteDocument = async (collectionName: string, id: string) => {
   const docRef = doc(db, collectionName, id);
@@ -134,18 +164,22 @@ export const deleteDocument = async (collectionName: string, id: string) => {
       if (docSnap.exists()) {
           const data = docSnap.data();
           
-          // Verificar si tiene el campo 'attachment' y si es una URL válida
-          if (data.attachment && typeof data.attachment === 'string' && data.attachment.startsWith('http')) {
+          // Verificar si tiene el campo 'attachment' y si es una URL válida de Firebase
+          if (data.attachment && typeof data.attachment === 'string' && data.attachment.includes('firebasestorage')) {
               try {
-                  // Crear referencia desde la URL completa
-                  const imageRef = ref(storage, data.attachment);
-                  // Eliminar de Storage
-                  await deleteObject(imageRef);
-                  console.log("Imagen adjunta eliminada de Storage correctamente.");
+                  // Usar el helper robusto para obtener la referencia
+                  const imageRef = getStorageRefFromUrl(data.attachment);
+                  
+                  if (imageRef) {
+                      await deleteObject(imageRef);
+                      console.log("Imagen adjunta eliminada de Storage correctamente.");
+                  } else {
+                      console.warn("No se pudo generar referencia para eliminar imagen:", data.attachment);
+                  }
               } catch (storageError: any) {
-                  // Si falla el borrado de imagen (ej. no existe), solo logueamos, pero permitimos borrar el registro
+                  // Si falla el borrado de imagen (ej. no existe), solo logueamos
                   if (storageError.code !== 'storage/object-not-found') {
-                      console.warn("No se pudo eliminar la imagen de Storage:", storageError);
+                      console.warn("Error al eliminar imagen de Storage:", storageError);
                   }
               }
           }
@@ -189,12 +223,10 @@ export const uploadImage = async (file: File | string, path: string): Promise<st
       const storageRef = ref(storage, path);
       
       // Metadata para CACHÉ agresivo (1 año).
-      // Esto le dice al navegador que guarde la imagen en disco y no vuelva a pedirla.
       const metadata = {
         cacheControl: 'public, max-age=31536000', 
       };
 
-      // Promesa de timeout para evitar carga infinita
       const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error("La subida tardó demasiado. Verifica tu conexión o los permisos de Storage.")), 15000);
       });
@@ -202,14 +234,11 @@ export const uploadImage = async (file: File | string, path: string): Promise<st
       let uploadPromise;
 
       if (typeof file === 'string') {
-        // It's a base64 string
         uploadPromise = uploadString(storageRef, file, 'data_url', metadata);
       } else {
-        // It's a File object
         uploadPromise = uploadBytes(storageRef, file, metadata);
       }
       
-      // Carrera entre la subida y el timeout
       await Promise.race([uploadPromise, timeoutPromise]);
       
       return await getDownloadURL(storageRef);
