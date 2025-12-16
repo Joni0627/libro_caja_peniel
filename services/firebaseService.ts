@@ -9,13 +9,15 @@ import {
   query, 
   orderBy,
   writeBatch,
-  getDocs
+  getDocs,
+  getDoc
 } from "firebase/firestore";
 import { 
   ref, 
   uploadString, 
   getDownloadURL, 
-  uploadBytes 
+  uploadBytes,
+  deleteObject
 } from "firebase/storage";
 import { db, storage } from "../firebase";
 import { Transaction, Center, MovementType, User, ChurchData } from "../types";
@@ -121,8 +123,40 @@ export const saveDocument = async (collectionName: string, data: any, id?: strin
   }
 };
 
+// UPDATED: Delete Document AND associated Storage Image
 export const deleteDocument = async (collectionName: string, id: string) => {
-  await deleteDoc(doc(db, collectionName, id));
+  const docRef = doc(db, collectionName, id);
+
+  try {
+      // 1. Obtener el documento antes de borrarlo para ver si tiene adjunto
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+          const data = docSnap.data();
+          
+          // Verificar si tiene el campo 'attachment' y si es una URL válida
+          if (data.attachment && typeof data.attachment === 'string' && data.attachment.startsWith('http')) {
+              try {
+                  // Crear referencia desde la URL completa
+                  const imageRef = ref(storage, data.attachment);
+                  // Eliminar de Storage
+                  await deleteObject(imageRef);
+                  console.log("Imagen adjunta eliminada de Storage correctamente.");
+              } catch (storageError: any) {
+                  // Si falla el borrado de imagen (ej. no existe), solo logueamos, pero permitimos borrar el registro
+                  if (storageError.code !== 'storage/object-not-found') {
+                      console.warn("No se pudo eliminar la imagen de Storage:", storageError);
+                  }
+              }
+          }
+      }
+
+      // 2. Eliminar el documento de Firestore
+      await deleteDoc(docRef);
+  } catch (error) {
+      console.error("Error al eliminar documento:", error);
+      throw error;
+  }
 };
 
 // Specific Batch Import for Transactions
@@ -154,6 +188,12 @@ export const uploadImage = async (file: File | string, path: string): Promise<st
   try {
       const storageRef = ref(storage, path);
       
+      // Metadata para CACHÉ agresivo (1 año).
+      // Esto le dice al navegador que guarde la imagen en disco y no vuelva a pedirla.
+      const metadata = {
+        cacheControl: 'public, max-age=31536000', 
+      };
+
       // Promesa de timeout para evitar carga infinita
       const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error("La subida tardó demasiado. Verifica tu conexión o los permisos de Storage.")), 15000);
@@ -163,10 +203,10 @@ export const uploadImage = async (file: File | string, path: string): Promise<st
 
       if (typeof file === 'string') {
         // It's a base64 string
-        uploadPromise = uploadString(storageRef, file, 'data_url');
+        uploadPromise = uploadString(storageRef, file, 'data_url', metadata);
       } else {
         // It's a File object
-        uploadPromise = uploadBytes(storageRef, file);
+        uploadPromise = uploadBytes(storageRef, file, metadata);
       }
       
       // Carrera entre la subida y el timeout

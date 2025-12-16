@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, Firestore } from "firebase/firestore";
+import { getFirestore, Firestore, enableIndexedDbPersistence } from "firebase/firestore";
 import { getStorage, FirebaseStorage } from "firebase/storage";
 import { getAuth, Auth } from "firebase/auth";
 
@@ -47,6 +47,20 @@ try {
   // Inicializar Firebase
   app = initializeApp(firebaseConfig);
   db = getFirestore(app);
+  
+  // --- HABILITAR PERSISTENCIA OFFLINE (CACHÉ) ---
+  // Esto guarda los datos en el dispositivo (IndexedDB) para que la app cargue 
+  // instantáneamente y no consuma lecturas si los datos no han cambiado.
+  enableIndexedDbPersistence(db).catch((err) => {
+      if (err.code == 'failed-precondition') {
+          // Ocurre si hay multiples pestañas abiertas
+          console.warn("La persistencia solo puede habilitarse en una pestaña a la vez.");
+      } else if (err.code == 'unimplemented') {
+          // El navegador no lo soporta
+          console.warn("El navegador no soporta persistencia offline.");
+      }
+  });
+
   storage = getStorage(app);
   auth = getAuth(app);
   console.log("Firebase inicializado correctamente.");
