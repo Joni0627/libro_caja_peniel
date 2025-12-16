@@ -203,20 +203,23 @@ const MasterData: React.FC<MasterDataProps> = ({
 
   // --- CHURCH DATA LOGIC ---
   
-  // Helper to convert Google Drive view links to direct image links
+  // Improved Helper to convert Google Drive view links to direct image links using Regex
   const convertDriveLink = (url: string) => {
       if (!url) return '';
-      // Pattern: https://drive.google.com/file/d/[ID]/view...
-      if (url.includes('drive.google.com') && url.includes('/file/d/')) {
-          try {
-             const id = url.split('/file/d/')[1].split('/')[0];
-             // Using universal export=view for image rendering
-             return `https://drive.google.com/uc?export=view&id=${id}`;
-          } catch(e) {
-             console.warn("Could not convert Drive link", e);
-             return url;
-          }
+      
+      // Attempt to extract File ID from common Google Drive URL patterns
+      // 1. /file/d/[ID]/...
+      // 2. id=[ID]
+      // 3. /d/[ID]/...
+      const idRegex = /(?:\/d\/|id=)([\w-]+)/;
+      const match = url.match(idRegex);
+      
+      if (match && match[1]) {
+          // Construct the direct export link
+          return `https://drive.google.com/uc?export=view&id=${match[1]}`;
       }
+      
+      // Return original if no pattern matched (might be a direct link already)
       return url;
   };
 
@@ -226,6 +229,7 @@ const MasterData: React.FC<MasterDataProps> = ({
           try {
               const processedData = {
                   ...newChurchData,
+                  // Convert link on save
                   logoUrl: convertDriveLink(newChurchData.logoUrl || '')
               };
               await saveChurchData(processedData);
@@ -700,6 +704,22 @@ const MasterData: React.FC<MasterDataProps> = ({
                                         Pega el enlace de "Compartir" de Google Drive. El sistema lo convertirá automáticamente para que sea visible. Asegúrate que el archivo esté configurado como "Público" (Cualquier persona con el enlace).
                                     </span>
                                 </div>
+                                
+                                {newChurchData.logoUrl && (
+                                    <div className="mt-3 bg-slate-50 rounded-lg p-3 text-center border border-slate-200">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 block">Vista Previa</span>
+                                        {/* Use converter for immediate preview */}
+                                        <img 
+                                            src={convertDriveLink(newChurchData.logoUrl)} 
+                                            alt="Vista Previa" 
+                                            className="w-16 h-16 object-contain rounded-full border border-slate-300 mx-auto bg-white shadow-sm" 
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).style.display = 'none';
+                                                (e.target as HTMLImageElement).parentElement!.innerHTML += '<span class="text-xs text-rose-500">Error al cargar imagen. Verifique el link.</span>';
+                                            }}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
