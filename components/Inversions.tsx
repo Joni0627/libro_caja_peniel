@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Inversion } from '../types';
-import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save } from 'lucide-react';
+import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save, CheckCircle } from 'lucide-react';
 import { saveDocument, deleteDocument, uploadImage } from '../services/firebaseService';
 import { useToast } from './Toast';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -19,6 +19,11 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null); // If not null, delete modal is open
   const [viewImage, setViewImage] = useState<string | null>(null);
+
+  // Finish (Cobrar) Modal State
+  const [finishModal, setFinishModal] = useState<{ isOpen: boolean; data: Inversion | null }>({ isOpen: false, data: null });
+  const [finishInterest, setFinishInterest] = useState('');
+  const [finishMonth, setFinishMonth] = useState('');
 
   // Form State
   const initialFormState: Partial<Inversion> = {
@@ -99,8 +104,61 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
       }
   };
 
-  const totalInvested = inversions.reduce((acc, curr) => acc + curr.amount, 0);
-  const potentialInterest = inversions.reduce((acc, curr) => acc + curr.interest, 0);
+  // --- FINISH / COBRAR LOGIC ---
+  const openFinishModal = (inv: Inversion) => {
+    setFinishModal({ isOpen: true, data: inv });
+    setFinishInterest(inv.interest.toString());
+    
+    // Suggest current month
+    const monthName = new Date().toLocaleString('es-ES', { month: 'long' });
+    setFinishMonth(monthName.charAt(0).toUpperCase() + monthName.slice(1));
+  };
+
+  const handleFinishInversion = async () => {
+      if (!finishModal.data) return;
+      
+      const interestAmount = parseFloat(finishInterest);
+      if (isNaN(interestAmount) || interestAmount <= 0) {
+          showToast("El monto del interés debe ser válido", 'error');
+          return;
+      }
+      if (!finishMonth) {
+          showToast("Debes ingresar el mes", 'error');
+          return;
+      }
+
+      setIsSaving(true);
+      try {
+          // 1. Create Income Transaction
+          const newTransaction = {
+              date: new Date().toISOString().split('T')[0],
+              centerId: 'c1', // Default to HQ or grab from inversion context if added
+              movementTypeId: 'ing_otras_entradas', // ID HARDCODED based on user requirement
+              detail: `${finishModal.data.description} - Intereses plazo fijo Mes ${finishMonth}`,
+              amount: interestAmount,
+              currency: 'ARS', // Default to ARS or check inversion currency if implemented
+              attachment: null,
+              excludeFromPdf: false
+          };
+          
+          await saveDocument('transactions', newTransaction);
+
+          // 2. Update Inversion Status to FINISHED
+          await saveDocument('inversions', { status: 'FINISHED' }, finishModal.data.id);
+
+          showToast("Interés cobrado y registrado en Caja exitosamente.", 'success');
+          setFinishModal({ isOpen: false, data: null });
+
+      } catch (error) {
+          console.error("Error finishing inversion:", error);
+          showToast("Error al procesar el cobro de interés.", 'error');
+      } finally {
+          setIsSaving(false);
+      }
+  };
+
+  const totalInvested = inversions.filter(i => i.status === 'ACTIVE').reduce((acc, curr) => acc + curr.amount, 0);
+  const potentialInterest = inversions.filter(i => i.status === 'ACTIVE').reduce((acc, curr) => acc + curr.interest, 0);
 
   // --- CHART DATA (Grouped by Month) ---
   const monthlyChartData = useMemo(() => {
@@ -136,13 +194,13 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-[#1B365D] rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
                 <div className="relative z-10">
-                    <p className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-1">Total Invertido (Capital)</p>
+                    <p className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-1">Capital Activo Total</p>
                     <h2 className="text-3xl font-bold">$ {totalInvested.toLocaleString('es-AR')}</h2>
                 </div>
                 <TrendingUp className="absolute right-4 bottom-4 text-white/10 w-24 h-24" />
             </div>
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-                 <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Interés Estimado Total</p>
+                 <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Interés Estimado (Activo)</p>
                  <h2 className="text-3xl font-bold text-[#84cc16]">$ {potentialInterest.toLocaleString('es-AR')}</h2>
             </div>
         </div>
@@ -170,7 +228,7 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
                             />
                             <Tooltip 
                                 cursor={{ fill: '#f8fafc' }}
-                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                                 formatter={(value: number, name: string) => [
                                     `$ ${value.toLocaleString('es-AR')}`, 
                                     name === 'capital' ? 'Capital' : 'Interés'
@@ -208,64 +266,79 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
                     No hay inversiones registradas.
                 </div>
             ) : (
-                inversions.map(inv => (
-                    <div key={inv.id} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-start gap-4">
-                            <div className="bg-blue-50 p-3 rounded-lg text-[#1B365D]">
-                                <FileText size={24} />
+                inversions.map(inv => {
+                    const isFinished = inv.status === 'FINISHED';
+                    return (
+                        <div key={inv.id} className={`rounded-xl p-4 border shadow-sm transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-4 ${isFinished ? 'bg-slate-50 border-slate-100 opacity-80' : 'bg-white border-slate-200 hover:shadow-md'}`}>
+                            <div className="flex items-start gap-4">
+                                <div className={`p-3 rounded-lg ${isFinished ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 text-[#1B365D]'}`}>
+                                    {isFinished ? <CheckCircle size={24} /> : <FileText size={24} />}
+                                </div>
+                                <div>
+                                    <h4 className={`font-bold text-lg ${isFinished ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{inv.description}</h4>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 mt-1">
+                                        <span className="flex items-center gap-1"><Calendar size={14} /> {inv.date}</span>
+                                        <span className="flex items-center gap-1"><Clock size={14} /> {inv.days} días</span>
+                                        <span className="flex items-center gap-1"><Hash size={14} /> Comp: {inv.voucher}</span>
+                                    </div>
+                                    {isFinished && <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-2 py-0.5 rounded mt-2 inline-block">FINALIZADA</span>}
+                                </div>
                             </div>
-                            <div>
-                                <h4 className="font-bold text-slate-800 text-lg">{inv.description}</h4>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 mt-1">
-                                    <span className="flex items-center gap-1"><Calendar size={14} /> {inv.date}</span>
-                                    <span className="flex items-center gap-1"><Clock size={14} /> {inv.days} días</span>
-                                    <span className="flex items-center gap-1"><Hash size={14} /> Comp: {inv.voucher}</span>
+
+                            <div className="flex items-center justify-between md:justify-end gap-6 border-t md:border-t-0 pt-4 md:pt-0">
+                                <div className="text-right">
+                                    <p className="text-xs text-slate-400 font-bold uppercase">Monto</p>
+                                    <p className={`font-bold text-lg ${isFinished ? 'text-slate-500' : 'text-[#1B365D]'}`}>$ {inv.amount.toLocaleString()}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-xs text-slate-400 font-bold uppercase">Interés</p>
+                                    <p className={`font-bold text-lg ${isFinished ? 'text-slate-500' : 'text-[#84cc16]'}`}>+ $ {inv.interest.toLocaleString()}</p>
+                                </div>
+                                
+                                <div className="flex gap-2 pl-4 border-l border-slate-100">
+                                    {inv.attachment && (
+                                        <button 
+                                            onClick={() => setViewImage(inv.attachment || null)}
+                                            className="p-2 text-slate-400 hover:text-[#1B365D] hover:bg-slate-50 rounded-lg transition-colors"
+                                            title="Ver Adjunto"
+                                        >
+                                            <Eye size={18} />
+                                        </button>
+                                    )}
+                                    {isAdmin && !isFinished && (
+                                        <button 
+                                            onClick={() => openFinishModal(inv)}
+                                            className="p-2 text-white bg-[#84cc16] hover:bg-lime-600 rounded-lg transition-colors shadow-sm shadow-lime-200"
+                                            title="Cobrar Interés / Finalizar"
+                                        >
+                                            <CheckCircle size={18} />
+                                        </button>
+                                    )}
+                                    {isAdmin && (
+                                        <>
+                                            {!isFinished && (
+                                                <button 
+                                                    onClick={() => handleEdit(inv)}
+                                                    className="p-2 text-slate-400 hover:text-[#1B365D] hover:bg-slate-50 rounded-lg transition-colors"
+                                                    title="Editar"
+                                                >
+                                                    <Pencil size={18} />
+                                                </button>
+                                            )}
+                                            <button 
+                                                onClick={() => setDeleteId(inv.id)}
+                                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                title="Eliminar"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
-
-                        <div className="flex items-center justify-between md:justify-end gap-6 border-t md:border-t-0 pt-4 md:pt-0">
-                            <div className="text-right">
-                                <p className="text-xs text-slate-400 font-bold uppercase">Monto</p>
-                                <p className="font-bold text-lg text-[#1B365D]">$ {inv.amount.toLocaleString()}</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-xs text-slate-400 font-bold uppercase">Interés</p>
-                                <p className="font-bold text-lg text-[#84cc16]">+ $ {inv.interest.toLocaleString()}</p>
-                            </div>
-                            
-                            <div className="flex gap-2 pl-4 border-l border-slate-100">
-                                {inv.attachment && (
-                                    <button 
-                                        onClick={() => setViewImage(inv.attachment || null)}
-                                        className="p-2 text-slate-400 hover:text-[#1B365D] hover:bg-slate-50 rounded-lg transition-colors"
-                                        title="Ver Adjunto"
-                                    >
-                                        <Eye size={18} />
-                                    </button>
-                                )}
-                                {isAdmin && (
-                                    <>
-                                        <button 
-                                            onClick={() => handleEdit(inv)}
-                                            className="p-2 text-slate-400 hover:text-[#1B365D] hover:bg-slate-50 rounded-lg transition-colors"
-                                            title="Editar"
-                                        >
-                                            <Pencil size={18} />
-                                        </button>
-                                        <button 
-                                            onClick={() => setDeleteId(inv.id)}
-                                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                            title="Eliminar"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                ))
+                    );
+                })
             )}
         </div>
 
@@ -418,6 +491,66 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions }) => {
                         </div>
                     </form>
                 </div>
+            </div>
+        )}
+
+        {/* --- FINISH CONFIRMATION MODAL --- */}
+        {finishModal.isOpen && finishModal.data && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                 <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-200">
+                     <div className="bg-[#84cc16] px-6 py-4 flex items-center gap-2">
+                         <CheckCircle className="text-white w-6 h-6" />
+                         <h3 className="text-white font-bold text-lg">Cobrar Intereses</h3>
+                     </div>
+                     <div className="p-6 space-y-4">
+                         <p className="text-slate-600 text-sm">
+                            Esto finalizará la inversión <strong>"{finishModal.data.description}"</strong> y creará un ingreso en la caja.
+                         </p>
+
+                         <div>
+                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mes a imputar</label>
+                             <input 
+                                type="text"
+                                value={finishMonth}
+                                onChange={(e) => setFinishMonth(e.target.value)}
+                                placeholder="Ej: Octubre"
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
+                             />
+                         </div>
+
+                         <div>
+                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Monto Interés Real</label>
+                             <div className="relative">
+                                <DollarSign className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
+                                <input 
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={finishInterest}
+                                    onChange={(e) => setFinishInterest(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-lg font-bold text-[#84cc16] focus:ring-2 focus:ring-[#84cc16] outline-none"
+                                />
+                             </div>
+                         </div>
+
+                         <div className="flex gap-3 pt-2">
+                             <button 
+                                 onClick={() => setFinishModal({ isOpen: false, data: null })}
+                                 className="flex-1 py-2.5 border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50"
+                             >
+                                 Cancelar
+                             </button>
+                             <button 
+                                 onClick={handleFinishInversion}
+                                 disabled={isSaving}
+                                 className="flex-1 py-2.5 bg-[#84cc16] text-white rounded-lg font-bold hover:bg-lime-600 shadow-sm flex justify-center items-center gap-2"
+                             >
+                                 {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                                 Confirmar
+                             </button>
+                         </div>
+                     </div>
+                 </div>
             </div>
         )}
 

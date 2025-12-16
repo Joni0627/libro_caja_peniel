@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Transaction, Center, MovementType } from '../types';
-import { Camera, Loader2, X, Save, FileText, CheckCircle } from 'lucide-react';
+import { Camera, Loader2, X, Save, FileText, CheckCircle, Clock, TrendingUp, Hash, DollarSign } from 'lucide-react';
 
 interface TransactionFormProps {
-  onSave: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
+  onSave: (transaction: Omit<Transaction, 'id'>, inversionData?: any) => Promise<void>;
   onCancel: () => void;
   centers: Center[];
   movementTypes: MovementType[];
@@ -27,9 +27,20 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   // If editing, we invert the stored value (because stored is 'exclude', UI is 'include')
   const [includeInPdf, setIncludeInPdf] = useState(initialData ? !initialData.excludeFromPdf : true);
   
+  // --- NEW: INVERSION SPECIFIC FIELDS ---
+  const [isInversionType, setIsInversionType] = useState(false);
+  const [invDays, setInvDays] = useState(30);
+  const [invInterest, setInvInterest] = useState('');
+  const [invVoucher, setInvVoucher] = useState('');
+
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check if selected type is "INVERSIONES PENIEL" (ID: egr_inversiones)
+  useEffect(() => {
+    setIsInversionType(movementTypeId === 'egr_inversiones');
+  }, [movementTypeId]);
 
   // If initialData changes (e.g. modal opens with new data), update state
   useEffect(() => {
@@ -86,7 +97,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         setAttachment(compressedBase64);
       } catch (error) {
         console.error("Error compressing image:", error);
-        alert("Error al procesar la imagen. Intente con otra.");
       } finally {
         setIsProcessingImage(false);
       }
@@ -95,224 +105,255 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isProcessingImage) return; // Prevent submit while processing image
-    
+    if (!amount || parseFloat(amount) <= 0) {
+        alert("El monto debe ser mayor a 0");
+        return;
+    }
+
     setIsSaving(true);
+    
+    // Base transaction Data
+    const transactionData = {
+      date,
+      centerId,
+      movementTypeId,
+      detail,
+      amount: parseFloat(amount),
+      currency,
+      attachment,
+      excludeFromPdf: !includeInPdf
+    };
+
+    // Optional Inversion Data (Only if type is inversion and we are creating, not editing existing)
+    // Note: Editing existing transactions linked to inversions is complex, simplified here to creation only.
+    let inversionData = null;
+    if (isInversionType && !initialData) {
+        inversionData = {
+            date,
+            description: detail, // Link description
+            amount: parseFloat(amount),
+            days: invDays,
+            interest: parseFloat(invInterest) || 0,
+            voucher: invVoucher,
+            status: 'ACTIVE'
+        };
+    }
+
     try {
-        await onSave({
-          date,
-          centerId,
-          movementTypeId,
-          detail,
-          amount: parseFloat(amount),
-          currency,
-          attachment,
-          excludeFromPdf: !includeInPdf // Invert UI logic for storage
-        });
+        await onSave(transactionData, inversionData);
     } catch (error) {
-        // Error handling done in parent
         console.error(error);
     } finally {
         setIsSaving(false);
     }
   };
 
-  const removeAttachment = () => {
-    setAttachment(undefined);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const isEditing = !!initialData;
-  
-  // Conditional styling: If editing (in modal), remove card styles (shadow, borders, etc) and rely on parent container
-  const containerClasses = isEditing 
-    ? "space-y-6 p-6" 
-    : "bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto space-y-6 border-t-4 border-[#1B365D]";
-
   return (
-    <form onSubmit={handleSubmit} className={containerClasses}>
-      {!isEditing && (
-        <div className="flex justify-between items-center border-b pb-4">
-            <h2 className="text-2xl font-bold text-[#1B365D]">Registrar Movimiento</h2>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* PDF Toggle - New Requirement */}
-        <div className="md:col-span-2 bg-slate-50 p-4 rounded-lg border border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-full ${includeInPdf ? 'bg-[#1B365D] text-white' : 'bg-slate-200 text-slate-400'}`}>
-                    <FileText size={20} />
-                </div>
-                <div>
-                    <span className="block text-sm font-bold text-slate-700">Tener en cuenta para planilla</span>
-                    <span className="block text-xs text-slate-500">
-                        {includeInPdf 
-                            ? "Este movimiento se sumará en el reporte PDF mensual." 
-                            : "Este movimiento NO aparecerá en el reporte PDF."}
-                    </span>
-                </div>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                    type="checkbox" 
-                    className="sr-only peer"
-                    checked={includeInPdf}
-                    onChange={(e) => setIncludeInPdf(e.target.checked)}
-                />
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1B365D]"></div>
-            </label>
-        </div>
-
-        {/* Date */}
+    <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+      
+      {/* --- STANDARD TRANSACTION FIELDS --- */}
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Fecha</label>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha</label>
           <input 
             type="date" 
             required
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full bg-white text-slate-900 rounded-lg border-slate-300 border p-2.5 focus:ring-2 focus:ring-[#1B365D] focus:outline-none"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
           />
         </div>
-
-        {/* Center */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Centro</label>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Centro</label>
           <select 
             value={centerId}
             onChange={(e) => setCenterId(e.target.value)}
-            className="w-full bg-white text-slate-900 rounded-lg border-slate-300 border p-2.5 focus:ring-2 focus:ring-[#1B365D] focus:outline-none"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none bg-white"
           >
             {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
+      </div>
 
-        {/* Movement Type */}
-        <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Movimiento</label>
-          <select 
-            value={movementTypeId}
-            onChange={(e) => setMovementTypeId(e.target.value)}
-            className="w-full bg-white text-slate-900 rounded-lg border-slate-300 border p-2.5 focus:ring-2 focus:ring-[#1B365D] focus:outline-none"
-          >
-            {movementTypes.map(m => (
-              <option key={m.id} value={m.id}>
-                {m.name} ({m.category === 'INCOME' ? '+' : '-'})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Detail */}
-        <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Detalle / Descripción</label>
-          <input 
-            type="text" 
-            required
-            placeholder="Ej: Pago de servicios básicos"
-            value={detail}
-            onChange={(e) => setDetail(e.target.value)}
-            className="w-full bg-white text-slate-900 rounded-lg border-slate-300 border p-2.5 focus:ring-2 focus:ring-[#1B365D] focus:outline-none"
-          />
-        </div>
-
-        {/* Amount */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Monto</label>
-          <input 
-            type="number" 
-            required
-            min="0"
-            step="0.01"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full bg-white text-slate-900 rounded-lg border-slate-300 border p-2.5 focus:ring-2 focus:ring-[#1B365D] focus:outline-none"
-          />
-        </div>
-
-        {/* Currency */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Moneda</label>
-          <select 
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            className="w-full bg-white text-slate-900 rounded-lg border-slate-300 border p-2.5 focus:ring-2 focus:ring-[#1B365D] focus:outline-none"
-          >
-            {currencies.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-
-        {/* Attachment */}
-        <div className="md:col-span-2">
-           <label className="block text-sm font-medium text-slate-700 mb-2">Adjunto (Recibo/Factura)</label>
-           
-           {!attachment && !isProcessingImage ? (
-             <div 
-                onClick={() => fileInputRef.current?.click()}
-                className="bg-white border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors group"
-             >
-                <div className="bg-slate-100 p-3 rounded-full mb-3 group-hover:bg-[#1B365D]/10 transition-colors">
-                    <Camera className="w-6 h-6 text-[#1B365D]" />
-                </div>
-                <p className="text-sm text-slate-500 font-medium">Toca para tomar foto o subir archivo</p>
-                <input 
-                    type="file" 
-                    accept="image/*" 
-                    className="hidden" 
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                />
-             </div>
-           ) : isProcessingImage ? (
-              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center">
-                  <Loader2 className="w-8 h-8 text-[#1B365D] animate-spin mb-2" />
-                  <p className="text-sm text-slate-500 font-medium">Procesando y comprimiendo imagen...</p>
-              </div>
-           ) : (
-             <div className="relative inline-block border rounded-lg overflow-hidden bg-white shadow-sm">
-                <img src={attachment} alt="Adjunto" className="h-48 object-cover" />
-                <button 
-                    type="button"
-                    onClick={removeAttachment}
-                    className="absolute top-2 right-2 bg-rose-500 text-white p-1.5 rounded-full hover:bg-rose-600 shadow-md transition-colors"
-                >
-                    <X className="w-4 h-4" />
-                </button>
-                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm">
-                   <CheckCircle className="w-3 h-3 text-lime-400" /> Listo para subir
-                </div>
-             </div>
-           )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2">
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tipo de Movimiento</label>
+            <select 
+                value={movementTypeId}
+                onChange={(e) => setMovementTypeId(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none bg-white"
+            >
+                {movementTypes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
         </div>
       </div>
 
-      <div className="flex gap-4 pt-4 border-t mt-4">
+      {/* --- INVERSION SPECIFIC FIELDS (CONDITIONAL) --- */}
+      {isInversionType && !initialData && (
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 space-y-3 animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center gap-2 text-[#1B365D] mb-1">
+                  <TrendingUp size={16} />
+                  <span className="text-sm font-bold">Datos de la Inversión</span>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                  <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Plazo (Días)</label>
+                      <div className="relative">
+                          <Clock className="absolute left-2 top-2 text-slate-400 w-3 h-3" />
+                          <input 
+                              type="number" 
+                              required={isInversionType}
+                              value={invDays}
+                              onChange={(e) => setInvDays(parseInt(e.target.value) || 0)}
+                              className="w-full pl-7 pr-2 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
+                          />
+                      </div>
+                  </div>
+                  <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Interés Estimado</label>
+                      <div className="relative">
+                          <DollarSign className="absolute left-2 top-2 text-slate-400 w-3 h-3" />
+                          <input 
+                              type="number" 
+                              step="0.01"
+                              required={isInversionType}
+                              placeholder="0.00"
+                              value={invInterest}
+                              onChange={(e) => setInvInterest(e.target.value)}
+                              className="w-full pl-7 pr-2 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#1B365D] outline-none text-green-600 font-bold"
+                          />
+                      </div>
+                  </div>
+              </div>
+              <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">N° Comprobante / Certificado</label>
+                  <div className="relative">
+                      <Hash className="absolute left-2 top-2 text-slate-400 w-3 h-3" />
+                      <input 
+                          type="text" 
+                          required={isInversionType}
+                          value={invVoucher}
+                          onChange={(e) => setInvVoucher(e.target.value)}
+                          placeholder="Ej: 8839201"
+                          className="w-full pl-7 pr-2 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
+                      />
+                  </div>
+              </div>
+          </div>
+      )}
+
+      <div>
+        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+            {isInversionType ? 'Descripción de la Inversión' : 'Detalle / Descripción'}
+        </label>
+        <div className="relative">
+             <FileText className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
+             <input 
+                type="text" 
+                required
+                value={detail}
+                onChange={(e) => setDetail(e.target.value)}
+                placeholder={isInversionType ? "Ej: Plazo Fijo Banco Nación" : "Descripción del movimiento"}
+                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
+             />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Monto</label>
+           <input 
+             type="number" 
+             step="0.01"
+             required
+             value={amount}
+             onChange={(e) => setAmount(e.target.value)}
+             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-[#1B365D] outline-none"
+           />
+        </div>
+        <div>
+           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Moneda</label>
+           <select 
+             value={currency}
+             onChange={(e) => setCurrency(e.target.value)}
+             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none bg-white"
+           >
+             {currencies.map(c => <option key={c} value={c}>{c}</option>)}
+           </select>
+        </div>
+      </div>
+
+      {/* Checkbox for PDF exclusion */}
+      <div className="flex items-center gap-2 pt-1">
+          <input 
+            type="checkbox" 
+            id="includePdf"
+            checked={includeInPdf}
+            onChange={(e) => setIncludeInPdf(e.target.checked)}
+            className="w-4 h-4 text-[#1B365D] rounded focus:ring-[#1B365D] border-slate-300"
+          />
+          <label htmlFor="includePdf" className="text-sm text-slate-600 cursor-pointer select-none">
+             Incluir en Planilla PDF
+          </label>
+      </div>
+
+      {/* Image Upload */}
+      <div>
+        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Comprobante (Imagen)</label>
+        
+        {!attachment ? (
+          <div 
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:bg-slate-50 transition-colors"
+          >
+            {isProcessingImage ? (
+               <Loader2 className="w-8 h-8 text-[#1B365D] animate-spin mx-auto mb-2" />
+            ) : (
+               <Camera className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+            )}
+            <p className="text-xs text-slate-500">
+               {isProcessingImage ? 'Procesando...' : 'Click para subir foto'}
+            </p>
+          </div>
+        ) : (
+          <div className="relative rounded-lg overflow-hidden border border-slate-200">
+            <img src={attachment} alt="Preview" className="w-full h-32 object-cover" />
+            <button 
+              type="button"
+              onClick={() => setAttachment(undefined)}
+              className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full shadow-sm hover:bg-red-600"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          className="hidden" 
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange} 
+        />
+      </div>
+
+      {/* Buttons */}
+      <div className="flex gap-3 pt-4 border-t border-slate-100">
         <button 
-            type="button" 
-            onClick={onCancel}
-            disabled={isSaving}
-            className="flex-1 py-3 px-4 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition-colors bg-white disabled:opacity-50"
+          type="button" 
+          onClick={onCancel}
+          className="flex-1 py-2.5 border border-slate-300 rounded-lg text-slate-600 font-bold hover:bg-slate-50 transition-colors"
         >
-            Cancelar
+          Cancelar
         </button>
         <button 
-            type="submit" 
-            disabled={isSaving || isProcessingImage}
-            className="flex-1 py-3 px-4 rounded-lg bg-[#1B365D] text-white font-medium hover:bg-[#152a48] transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
+          type="submit" 
+          disabled={isSaving || isProcessingImage}
+          className="flex-1 py-2.5 bg-[#1B365D] text-white rounded-lg font-bold hover:bg-[#152a48] transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
         >
-            {isSaving ? (
-                <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    {isEditing ? 'Actualizando...' : 'Guardando...'}
-                </>
-            ) : (
-                <>
-                    {isEditing ? <Save className="w-4 h-4" /> : null}
-                    {isEditing ? 'Actualizar Movimiento' : 'Guardar Movimiento'}
-                </>
-            )}
+          {isSaving ? <Loader2 className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}
+          Guardar
         </button>
       </div>
     </form>

@@ -127,7 +127,7 @@ const App: React.FC = () => {
     };
   }, [currentUser]); // Re-run when user logs in/out
 
-  const handleSaveTransaction = async (newTx: Omit<Transaction, 'id'>) => {
+  const handleSaveTransaction = async (newTx: Omit<Transaction, 'id'>, inversionData?: any) => {
     try {
         let attachmentUrl = newTx.attachment;
         if (newTx.attachment && newTx.attachment.startsWith('data:')) {
@@ -135,12 +135,25 @@ const App: React.FC = () => {
             attachmentUrl = await uploadImage(newTx.attachment, fileName);
         }
 
+        // 1. Save Transaction (Gasto de Caja)
         const transactionToSave = {
             ...newTx,
             // FIX: Ensure undefined becomes null for Firestore
             attachment: attachmentUrl || null
         };
         await saveDocument('transactions', transactionToSave);
+
+        // 2. If Inversion Data is present, create Inversion Record automatically
+        if (inversionData) {
+            const inversionToSave = {
+                ...inversionData,
+                // Use the same image URL generated above
+                attachment: attachmentUrl || null
+            };
+            await saveDocument('inversions', inversionToSave);
+            showToast("Movimiento de Inversión creado automáticamente.", 'success');
+        }
+
         showToast("Movimiento registrado correctamente", 'success');
         // No need to switch tab as we are already in List view usually
     } catch (error) {
