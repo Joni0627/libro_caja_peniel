@@ -147,15 +147,29 @@ export const saveChurchData = async (churchData: ChurchData) => {
 // --- STORAGE OPERATIONS ---
 
 export const uploadImage = async (file: File | string, path: string): Promise<string> => {
-  const storageRef = ref(storage, path);
-  
-  if (typeof file === 'string') {
-    // It's a base64 string
-    await uploadString(storageRef, file, 'data_url');
-  } else {
-    // It's a File object
-    await uploadBytes(storageRef, file);
+  if (!storage || !storage.app) {
+      throw new Error("El servicio de almacenamiento no está disponible. Verifica la configuración (VITE_FIREBASE_STORAGE_BUCKET).");
   }
-  
-  return await getDownloadURL(storageRef);
+
+  try {
+      const storageRef = ref(storage, path);
+      
+      if (typeof file === 'string') {
+        // It's a base64 string
+        await uploadString(storageRef, file, 'data_url');
+      } else {
+        // It's a File object
+        await uploadBytes(storageRef, file);
+      }
+      
+      return await getDownloadURL(storageRef);
+  } catch (error: any) {
+      console.error("Upload error details:", error);
+      if (error.code === 'storage/unauthorized') {
+          throw new Error("No tienes permisos para subir archivos.");
+      } else if (error.code === 'storage/retry-limit-exceeded') {
+          throw new Error("La subida tardó demasiado. Tu conexión puede ser inestable.");
+      }
+      throw error;
+  }
 };

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Transaction, Center, MovementType } from '../types';
-import { Camera, Loader2, X, Save, FileText } from 'lucide-react';
+import { Camera, Loader2, X, Save, FileText, CheckCircle } from 'lucide-react';
 
 interface TransactionFormProps {
   onSave: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
@@ -28,6 +28,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [includeInPdf, setIncludeInPdf] = useState(initialData ? !initialData.excludeFromPdf : true);
   
   const [isSaving, setIsSaving] = useState(false);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // If initialData changes (e.g. modal opens with new data), update state
@@ -44,20 +45,58 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     }
   }, [initialData]);
 
+  // Image Compression Utility
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const elem = document.createElement('canvas');
+          const maxWidth = 1000; // Resize to max 1000px width
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+          elem.width = width;
+          elem.height = height;
+          const ctx = elem.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Compress to JPEG with 0.7 quality
+          resolve(elem.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        setAttachment(base64);
-      };
-      reader.readAsDataURL(file);
+      setIsProcessingImage(true);
+      try {
+        const compressedBase64 = await compressImage(file);
+        setAttachment(compressedBase64);
+      } catch (error) {
+        console.error("Error compressing image:", error);
+        alert("Error al procesar la imagen. Intente con otra.");
+      } finally {
+        setIsProcessingImage(false);
+      }
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isProcessingImage) return; // Prevent submit while processing image
+    
     setIsSaving(true);
     try {
         await onSave({
@@ -209,7 +248,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         <div className="md:col-span-2">
            <label className="block text-sm font-medium text-slate-700 mb-2">Adjunto (Recibo/Factura)</label>
            
-           {!attachment ? (
+           {!attachment && !isProcessingImage ? (
              <div 
                 onClick={() => fileInputRef.current?.click()}
                 className="bg-white border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors group"
@@ -226,16 +265,24 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                     onChange={handleFileChange}
                 />
              </div>
+           ) : isProcessingImage ? (
+              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center">
+                  <Loader2 className="w-8 h-8 text-[#1B365D] animate-spin mb-2" />
+                  <p className="text-sm text-slate-500 font-medium">Procesando y comprimiendo imagen...</p>
+              </div>
            ) : (
-             <div className="relative inline-block border rounded-lg overflow-hidden bg-white">
+             <div className="relative inline-block border rounded-lg overflow-hidden bg-white shadow-sm">
                 <img src={attachment} alt="Adjunto" className="h-48 object-cover" />
                 <button 
                     type="button"
                     onClick={removeAttachment}
-                    className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 shadow-md"
+                    className="absolute top-2 right-2 bg-rose-500 text-white p-1.5 rounded-full hover:bg-rose-600 shadow-md transition-colors"
                 >
                     <X className="w-4 h-4" />
                 </button>
+                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm">
+                   <CheckCircle className="w-3 h-3 text-lime-400" /> Listo para subir
+                </div>
              </div>
            )}
         </div>
@@ -252,7 +299,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         </button>
         <button 
             type="submit" 
-            disabled={isSaving}
+            disabled={isSaving || isProcessingImage}
             className="flex-1 py-3 px-4 rounded-lg bg-[#1B365D] text-white font-medium hover:bg-[#152a48] transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
         >
             {isSaving ? (
