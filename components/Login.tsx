@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { login } from '../services/authService';
+import { subscribeToConfig } from '../services/firebaseService';
 import { Loader2, Lock, Mail, AlertCircle } from 'lucide-react';
 
 interface LoginProps {}
@@ -9,6 +10,25 @@ const Login: React.FC<LoginProps> = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Branding State
+  const [churchName, setChurchName] = useState('Peniel (MCyM)');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState(false);
+
+  useEffect(() => {
+    // Attempt to fetch public config for branding
+    // Note: This requires the 'app_config/main' document to be readable by unauthenticated users in Firestore Rules
+    // If not readable, it will gracefully fallback to defaults.
+    const unsub = subscribeToConfig((_, data) => {
+        if (data) {
+            setChurchName(data.name || 'Peniel (MCyM)');
+            setLogoUrl(data.logoUrl || null);
+            setLogoError(false); // Reset error state on new data
+        }
+    });
+    return () => unsub();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,11 +56,22 @@ const Login: React.FC<LoginProps> = () => {
       <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden border border-slate-100">
         
         {/* Header Branding */}
-        <div className="bg-[#1B365D] p-10 text-center relative overflow-hidden">
+        <div className="bg-[#1B365D] p-8 text-center relative overflow-hidden flex flex-col items-center">
           <div className="absolute top-0 left-0 w-full h-2 bg-[#84cc16]"></div>
           
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-2">PENIEL</h1>
-          <p className="text-blue-200 text-sm font-medium tracking-wide uppercase opacity-80">Libro de Caja Digital</p>
+          {logoUrl && !logoError && (
+             <div className="w-24 h-24 bg-white rounded-full mb-4 flex items-center justify-center p-1 shadow-lg border-2 border-white/20">
+                 <img 
+                    src={logoUrl} 
+                    alt="Logo Iglesia" 
+                    className="w-full h-full object-contain rounded-full"
+                    onError={() => setLogoError(true)} 
+                 />
+             </div>
+          )}
+
+          <h1 className="text-2xl font-bold text-white tracking-tight mb-1">{churchName}</h1>
+          <p className="text-blue-200 text-xs font-medium tracking-wide uppercase opacity-80">Libro de Caja Digital</p>
         </div>
 
         {/* Login Form */}
