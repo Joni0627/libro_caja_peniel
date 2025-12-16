@@ -123,33 +123,26 @@ export const saveDocument = async (collectionName: string, data: any, id?: strin
   }
 };
 
-// Helper: Extraer referencia segura desde URL
+// Helper: Extraer referencia segura desde URL usando Regex
 const getStorageRefFromUrl = (url: string) => {
     try {
-        // Intento 1: Método estándar del SDK (funciona el 90% de las veces)
+        // Estrategia: Ignorar el dominio y buscar el patrón /o/[PATH_CODIFICADO]
+        // Esto es mucho más seguro que pasar la URL completa
+        const regex = /\/o\/(.+?)(\?|$)/;
+        const match = url.match(regex);
+        
+        if (match && match[1]) {
+            // Decodificar la ruta (ej: receipts%2Ffoto.jpg -> receipts/foto.jpg)
+            const decodedPath = decodeURIComponent(match[1]);
+            console.log("Intentando borrar archivo en ruta:", decodedPath);
+            return ref(storage, decodedPath);
+        }
+
+        console.warn("No se pudo extraer el path con regex, intentando método nativo...");
         return ref(storage, url);
     } catch (e) {
-        console.warn("Fallo ref directa, intentando extracción manual...", e);
-        try {
-            // Intento 2: Parseo manual de la URL para obtener la ruta decodificada
-            // Las URLs de Firebase son tipo: .../b/[BUCKET]/o/[PATH]?alt=...
-            const pathStart = url.indexOf('/o/');
-            if (pathStart === -1) return null;
-            
-            // Extraer todo después de /o/ y antes de ?
-            let path = url.substring(pathStart + 3);
-            const queryStart = path.indexOf('?');
-            if (queryStart !== -1) {
-                path = path.substring(0, queryStart);
-            }
-            
-            // IMPORTANTE: Decodificar (ej: receipts%2Ffoto.jpg -> receipts/foto.jpg)
-            const decodedPath = decodeURIComponent(path);
-            return ref(storage, decodedPath);
-        } catch (e2) {
-            console.error("No se pudo parsear la URL de Storage:", url);
-            return null;
-        }
+        console.error("Error fatal generando referencia de Storage:", e);
+        return null;
     }
 };
 
@@ -164,22 +157,23 @@ export const deleteDocument = async (collectionName: string, id: string) => {
       if (docSnap.exists()) {
           const data = docSnap.data();
           
-          // Verificar si tiene el campo 'attachment' y si es una URL válida de Firebase
+          // Verificar si tiene el campo 'attachment' y parece una URL de Firebase
           if (data.attachment && typeof data.attachment === 'string' && data.attachment.includes('firebasestorage')) {
               try {
-                  // Usar el helper robusto para obtener la referencia
                   const imageRef = getStorageRefFromUrl(data.attachment);
                   
                   if (imageRef) {
                       await deleteObject(imageRef);
-                      console.log("Imagen adjunta eliminada de Storage correctamente.");
+                      console.log("✅ Imagen adjunta eliminada correctamente de Storage.");
                   } else {
-                      console.warn("No se pudo generar referencia para eliminar imagen:", data.attachment);
+                      console.warn("⚠️ No se pudo generar la referencia para el adjunto:", data.attachment);
                   }
               } catch (storageError: any) {
-                  // Si falla el borrado de imagen (ej. no existe), solo logueamos
-                  if (storageError.code !== 'storage/object-not-found') {
-                      console.warn("Error al eliminar imagen de Storage:", storageError);
+                  // Si el objeto no existe, no es un error crítico para la app, pero lo logueamos
+                  if (storageError.code === 'storage/object-not-found') {
+                      console.log("La imagen ya no existía en Storage, continuando con borrado de registro.");
+                  } else {
+                      console.warn("❌ Error al eliminar imagen de Storage:", storageError);
                   }
               }
           }
