@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Inversion, Center, MovementType, MovementCategory } from '../types';
-import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save, CheckCircle } from 'lucide-react';
+import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save, CheckCircle, AlertCircle } from 'lucide-react';
 import { saveDocument, deleteDocument, uploadImage } from '../services/firebaseService';
 import { useToast } from './Toast';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -10,7 +10,7 @@ interface InversionsProps {
   inversions: Inversion[]; 
   centers?: Center[]; 
   currencies?: string[];
-  movementTypes: MovementType[]; // Añadido para buscar IDs correctos
+  movementTypes: MovementType[]; 
 }
 
 const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = [], currencies = ['ARS'], movementTypes }) => {
@@ -48,20 +48,39 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
   };
 
   const getRecuperoTypeId = () => {
-      // Buscar el ID exacto del movimiento de entrada para el capital
       return findTypeByExactName('RECUPERO INVERSIONES PENIEL', MovementCategory.INCOME) || 'ing_recupero_inversion';
   };
 
   const getInversionSalidaTypeId = () => {
-      // Buscar el ID exacto del movimiento de salida para la inversión
       return findTypeByExactName('INVERSIONES PENIEL', MovementCategory.EXPENSE) || 'egr_inversiones';
   };
 
   const getOtrosIngresosTypeId = () => {
-      // Buscar "OTROS INGRESOS" u "OTRAS ENTRADAS"
       return findTypeByExactName('OTROS INGRESOS', MovementCategory.INCOME) || 
              findTypeByExactName('OTRAS ENTRADAS', MovementCategory.INCOME) || 
              'ing_otras_entradas';
+  };
+
+  // --- LOGICA DE VENCIMIENTO ---
+  const getMaturityInfo = (dateStr: string, days: number) => {
+      const start = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone shift
+      const maturityDate = new Date(start);
+      maturityDate.setDate(start.getDate() + days);
+      
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const mDate = new Date(maturityDate);
+      mDate.setHours(0,0,0,0);
+
+      const isMature = today >= mDate;
+      const diffTime = mDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      return {
+          maturityDate: mDate.toLocaleDateString('es-AR'),
+          isMature,
+          daysRemaining: diffDays > 0 ? diffDays : 0
+      };
   };
 
   // --- CRUD HANDLERS ---
@@ -146,7 +165,6 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
               }
               showToast("Inversión actualizada", 'success');
           } else {
-              // CREACIÓN NUEVA
               const typeId = getInversionSalidaTypeId();
               const newTx = {
                  date: formData.date,
@@ -205,7 +223,6 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
           const finishDate = new Date().toISOString().split('T')[0];
           const centerId = centers.length > 0 ? centers[0].id : 'c1';
 
-          // 1. CREAR MOVIMIENTO: RECUPERO DE CAPITAL
           const recuperoId = getRecuperoTypeId();
           const capitalTransaction = {
               date: finishDate,
@@ -219,7 +236,6 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
           };
           await saveDocument('transactions', capitalTransaction);
 
-          // 2. CREAR MOVIMIENTO: INTERÉS GANADO
           if (interestAmount > 0) {
               const otrosIngresosId = getOtrosIngresosTypeId();
               const interestTransaction = {
@@ -235,7 +251,6 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
               await saveDocument('transactions', interestTransaction);
           }
 
-          // 3. ACTUALIZAR ESTADO INVERSIÓN
           await saveDocument('inversions', { status: 'FINISHED' }, finishModal.data.id);
 
           showToast("Inversión finalizada correctamente.", 'success');
@@ -355,6 +370,8 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
             ) : (
                 inversions.map(inv => {
                     const isFinished = inv.status === 'FINISHED';
+                    const { isMature, maturityDate, daysRemaining } = getMaturityInfo(inv.date, inv.days);
+
                     return (
                         <div key={inv.id} className={`rounded-xl p-4 border shadow-sm transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-4 ${isFinished ? 'bg-slate-50 border-slate-100 opacity-80' : 'bg-white border-slate-200 hover:shadow-md'}`}>
                             <div className="flex items-start gap-4">
@@ -362,14 +379,28 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
                                     {isFinished ? <CheckCircle size={24} /> : <FileText size={24} />}
                                 </div>
                                 <div>
-                                    <h4 className={`font-bold text-lg ${isFinished ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{inv.description}</h4>
+                                    <div className="flex items-center gap-3">
+                                        <h4 className={`font-bold text-lg ${isFinished ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{inv.description}</h4>
+                                        {!isFinished && (
+                                            isMature ? (
+                                                <span className="bg-lime-100 text-lime-700 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                                                    <CheckCircle size={10} /> LISTO PARA COBRAR
+                                                </span>
+                                            ) : (
+                                                <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                                                    <Clock size={10} /> VIGENTE ({daysRemaining} d restantes)
+                                                </span>
+                                            )
+                                        )}
+                                    </div>
                                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 mt-1">
-                                        <span className="flex items-center gap-1"><Calendar size={14} /> {inv.date}</span>
-                                        <span className="flex items-center gap-1"><Clock size={14} /> {inv.days} días</span>
+                                        <span className="flex items-center gap-1" title="Fecha de inicio"><Calendar size={14} /> {inv.date}</span>
+                                        <span className="flex items-center gap-1" title="Plazo total"><Clock size={14} /> {inv.days} días</span>
+                                        {!isFinished && <span className="flex items-center gap-1 text-[#1B365D] font-medium" title="Fecha de vencimiento calculada"><AlertCircle size={14} /> Vence: {maturityDate}</span>}
                                         <span className="flex items-center gap-1"><Hash size={14} /> Comp: {inv.voucher}</span>
                                         <span className="flex items-center gap-1 font-bold bg-slate-100 px-1 rounded">{inv.currency || 'ARS'}</span>
                                     </div>
-                                    {isFinished && <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-2 py-0.5 rounded mt-2 inline-block">FINALIZADA</span>}
+                                    {isFinished && <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-2 py-0.5 rounded mt-2 inline-block uppercase">Inversión Finalizada</span>}
                                 </div>
                             </div>
 
@@ -396,8 +427,13 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
                                     {isAdmin && !isFinished && (
                                         <button 
                                             onClick={() => openFinishModal(inv)}
-                                            className="p-2 text-white bg-[#84cc16] hover:bg-lime-600 rounded-lg transition-colors shadow-sm shadow-lime-200"
-                                            title="Cobrar Interés / Finalizar"
+                                            disabled={!isMature}
+                                            className={`p-2 text-white rounded-lg transition-all shadow-sm ${
+                                                isMature 
+                                                ? 'bg-[#84cc16] hover:bg-lime-600 shadow-lime-200' 
+                                                : 'bg-slate-300 cursor-not-allowed opacity-50 shadow-none'
+                                            }`}
+                                            title={isMature ? "Cobrar Interés / Finalizar" : `Bloqueado hasta el ${maturityDate}`}
                                         >
                                             <CheckCircle size={18} />
                                         </button>
@@ -546,7 +582,6 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
                                 </div>
                             </div>
                         </div>
-
 
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Adjunto / Comprobante</label>
