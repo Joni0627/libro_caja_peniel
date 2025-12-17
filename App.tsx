@@ -313,6 +313,7 @@ const App: React.FC = () => {
         {activeTab === 'dashboard' && (
           <Dashboard 
             transactions={transactions} 
+            setChartCurrency={() => {}} // Dummy as it's handled inside Dashboard now
             movementTypes={movementTypes} 
           />
         )}
@@ -329,13 +330,14 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* Inversions Tab - Now receiving data as props */}
+        {/* Inversions Tab - Now receiving movementTypes too */}
         {activeTab === 'inversions' && (
           <Inversions 
               isAdmin={isAdmin} 
               inversions={inversions}
               centers={centers}
               currencies={currencies}
+              movementTypes={movementTypes}
           />
         )}
         

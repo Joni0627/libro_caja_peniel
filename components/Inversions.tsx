@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { Inversion, Center } from '../types';
+import { Inversion, Center, MovementType, MovementCategory } from '../types';
 import { TrendingUp, Plus, Calendar, FileText, DollarSign, Clock, Hash, Trash2, Pencil, Eye, X, Upload, Loader2, Save, CheckCircle } from 'lucide-react';
 import { saveDocument, deleteDocument, uploadImage } from '../services/firebaseService';
 import { useToast } from './Toast';
@@ -7,19 +7,18 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 
 interface InversionsProps {
   isAdmin: boolean;
-  inversions: Inversion[]; // Ahora recibe los datos, no los busca
-  centers?: Center[]; // Optional to avoid strict dep if not passed in some context
+  inversions: Inversion[]; 
+  centers?: Center[]; 
   currencies?: string[];
+  movementTypes: MovementType[]; // Añadido para buscar IDs correctos
 }
 
-const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = [], currencies = ['ARS'] }) => {
-  // Eliminado estado interno 'inversions' y 'useEffect' de suscripción
-  
+const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = [], currencies = ['ARS'], movementTypes }) => {
   const { showToast } = useToast();
   
   // Modal States
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [deleteData, setDeleteData] = useState<Inversion | null>(null); // Changed from ID to whole Object to check linkage
+  const [deleteData, setDeleteData] = useState<Inversion | null>(null); 
   const [viewImage, setViewImage] = useState<string | null>(null);
 
   // Finish (Cobrar) Modal State
@@ -32,7 +31,7 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
     date: new Date().toISOString().split('T')[0],
     description: '',
     amount: 0,
-    currency: currencies[0] || 'ARS', // Default Currency
+    currency: currencies[0] || 'ARS', 
     days: 30,
     interest: 0,
     voucher: '',
@@ -41,6 +40,29 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
   const [formData, setFormData] = useState<Partial<Inversion>>(initialFormState);
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- HELPERS PARA BUSCAR TIPOS DE MOVIMIENTO ---
+  const findTypeByExactName = (name: string, category: MovementCategory) => {
+      const type = movementTypes.find(m => m.name.toUpperCase() === name.toUpperCase() && m.category === category);
+      return type ? type.id : null;
+  };
+
+  const getRecuperoTypeId = () => {
+      // Buscar el ID exacto del movimiento de entrada para el capital
+      return findTypeByExactName('RECUPERO INVERSIONES PENIEL', MovementCategory.INCOME) || 'ing_recupero_inversion';
+  };
+
+  const getInversionSalidaTypeId = () => {
+      // Buscar el ID exacto del movimiento de salida para la inversión
+      return findTypeByExactName('INVERSIONES PENIEL', MovementCategory.EXPENSE) || 'egr_inversiones';
+  };
+
+  const getOtrosIngresosTypeId = () => {
+      // Buscar "OTROS INGRESOS" u "OTRAS ENTRADAS"
+      return findTypeByExactName('OTROS INGRESOS', MovementCategory.INCOME) || 
+             findTypeByExactName('OTRAS ENTRADAS', MovementCategory.INCOME) || 
+             'ing_otras_entradas';
+  };
 
   // --- CRUD HANDLERS ---
 
@@ -61,20 +83,14 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
       if (!deleteData) return;
       setIsSaving(true);
       try {
-          // 1. Si la inversión tiene un movimiento asociado y NO está finalizada, eliminar el movimiento también
-          // Esto "Reversa" la salida de dinero de la caja
           if (deleteData.linkedTransactionId && deleteData.status === 'ACTIVE') {
               try {
                   await deleteDocument('transactions', deleteData.linkedTransactionId);
-                  console.log("Movimiento vinculado eliminado correctamente");
               } catch (e) {
                   console.error("No se pudo eliminar el movimiento vinculado", e);
               }
           }
-
-          // 2. Eliminar la inversión
           await deleteDocument('inversions', deleteData.id);
-          
           showToast("Inversión anulada/eliminada correctamente", 'success');
           setDeleteData(null);
       } catch (error) {
@@ -103,24 +119,18 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
       setIsSaving(true);
       try {
           let attachmentUrl = formData.attachment;
-          
-          // Si hay adjunto y es base64 (nuevo), subirlo
           if (attachmentUrl && attachmentUrl.startsWith('data:')) {
               const fileName = `inversions/${Date.now()}.jpg`;
               attachmentUrl = await uploadImage(attachmentUrl, fileName);
           }
-
-          // --- LOGICA DE CREACIÓN VS EDICIÓN ---
           
           if (formData.id) {
-              // EDICIÓN
               const dataToSave = {
                   ...formData,
                   attachment: attachmentUrl || null
               };
               await saveDocument('inversions', dataToSave, formData.id);
 
-              // Actualización en cascada del movimiento
               if (formData.linkedTransactionId && formData.status === 'ACTIVE') {
                   try {
                       const txUpdate = {
@@ -130,31 +140,26 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
                           currency: formData.currency
                       };
                       await saveDocument('transactions', txUpdate, formData.linkedTransactionId);
-                      console.log("Movimiento vinculado actualizado");
                   } catch(e) {
                       console.error("Error actualizando movimiento vinculado:", e);
                   }
               }
               showToast("Inversión actualizada", 'success');
-
           } else {
               // CREACIÓN NUEVA
-              // 1. Crear Movimiento de Caja (Egreso) - INVERSIONES PENIEL
+              const typeId = getInversionSalidaTypeId();
               const newTx = {
                  date: formData.date,
-                 centerId: centers.length > 0 ? centers[0].id : 'c1', // Default center
-                 movementTypeId: 'egr_inversiones', // ID fijo para "INVERSIONES PENIEL"
+                 centerId: centers.length > 0 ? centers[0].id : 'c1',
+                 movementTypeId: typeId,
                  detail: formData.description || 'Nueva Inversión',
                  amount: formData.amount,
                  currency: formData.currency || 'ARS',
                  attachment: attachmentUrl || null,
-                 excludeFromPdf: false // Las salidas de inversión SÍ van al PDF generalmente, o según criterio, por defecto SI.
+                 excludeFromPdf: false
               };
              
-              // Guardar transacción y obtener ID
               const savedTxId = await saveDocument('transactions', newTx);
-              
-              // 2. Crear Inversión vinculada
               const dataToSave = {
                   ...formData,
                   linkedTransactionId: savedTxId,
@@ -175,12 +180,9 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
       }
   };
 
-  // --- FINISH / COBRAR LOGIC ---
   const openFinishModal = (inv: Inversion) => {
     setFinishModal({ isOpen: true, data: inv });
     setFinishInterest(inv.interest.toString());
-    
-    // Suggest current month
     const monthName = new Date().toLocaleString('es-ES', { month: 'long' });
     setFinishMonth(monthName.charAt(0).toUpperCase() + monthName.slice(1));
   };
@@ -204,34 +206,31 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
           const centerId = centers.length > 0 ? centers[0].id : 'c1';
 
           // 1. CREAR MOVIMIENTO: RECUPERO DE CAPITAL
-          // Tipo: RECUPERO INVERSIONES PENIEL (ing_recupero_inversion)
-          // Excluir del PDF: SI
+          const recuperoId = getRecuperoTypeId();
           const capitalTransaction = {
               date: finishDate,
               centerId: centerId,
-              movementTypeId: 'ing_recupero_inversion', // Debe coincidir con ID en constants.ts
+              movementTypeId: recuperoId, 
               detail: `Recupero Capital - ${finishModal.data.description}`,
-              amount: finishModal.data.amount, // El capital original
+              amount: finishModal.data.amount,
               currency: finishModal.data.currency || 'ARS',
               attachment: null,
-              excludeFromPdf: true // REQUISITO: No mostrar en PDF
+              excludeFromPdf: true 
           };
           await saveDocument('transactions', capitalTransaction);
 
-
           // 2. CREAR MOVIMIENTO: INTERÉS GANADO
-          // Tipo: OTRAS ENTRADAS (ing_otras_entradas)
-          // Excluir del PDF: NO
           if (interestAmount > 0) {
+              const otrosIngresosId = getOtrosIngresosTypeId();
               const interestTransaction = {
                   date: finishDate,
                   centerId: centerId,
-                  movementTypeId: 'ing_otras_entradas', // Usamos "Otras Entradas" para la ganancia
+                  movementTypeId: otrosIngresosId,
                   detail: `Interés Ganado - ${finishModal.data.description} - Mes ${finishMonth}`,
                   amount: interestAmount,
                   currency: finishModal.data.currency || 'ARS',
                   attachment: null,
-                  excludeFromPdf: false // REQUISITO: Mostrar en PDF
+                  excludeFromPdf: false 
               };
               await saveDocument('transactions', interestTransaction);
           }
@@ -239,7 +238,7 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
           // 3. ACTUALIZAR ESTADO INVERSIÓN
           await saveDocument('inversions', { status: 'FINISHED' }, finishModal.data.id);
 
-          showToast("Inversión finalizada: Capital recuperado e Interés registrado.", 'success');
+          showToast("Inversión finalizada correctamente.", 'success');
           setFinishModal({ isOpen: false, data: null });
 
       } catch (error) {
@@ -253,29 +252,24 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
   const totalInvested = inversions.filter(i => i.status === 'ACTIVE').reduce((acc, curr) => acc + curr.amount, 0);
   const potentialInterest = inversions.filter(i => i.status === 'ACTIVE').reduce((acc, curr) => acc + curr.interest, 0);
 
-  // --- CHART DATA (Grouped by Month) ---
   const monthlyChartData = useMemo(() => {
     const grouped: Record<string, { capital: number; interest: number }> = {};
-
     inversions.forEach(inv => {
-        const monthKey = inv.date.substring(0, 7); // YYYY-MM
+        const monthKey = inv.date.substring(0, 7);
         if (!grouped[monthKey]) {
             grouped[monthKey] = { capital: 0, interest: 0 };
         }
         grouped[monthKey].capital += inv.amount;
         grouped[monthKey].interest += inv.interest;
     });
-
-    // Convert to array and sort chronologically
     return Object.entries(grouped)
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([key, data]) => {
             const [y, m] = key.split('-');
             const date = new Date(parseInt(y), parseInt(m) - 1);
-            // Format: "Ene 24"
             const name = date.toLocaleString('es-ES', { month: 'short', year: '2-digit' });
             return {
-                name: name.charAt(0).toUpperCase() + name.slice(1), // Capitalize first letter
+                name: name.charAt(0).toUpperCase() + name.slice(1),
                 ...data
             };
         });
