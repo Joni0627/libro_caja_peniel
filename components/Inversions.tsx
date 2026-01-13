@@ -16,17 +16,13 @@ interface InversionsProps {
 const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = [], currencies = ['ARS'], movementTypes }) => {
   const { showToast } = useToast();
   
-  // Modal States
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [deleteData, setDeleteData] = useState<Inversion | null>(null); 
   const [viewImage, setViewImage] = useState<string | null>(null);
-
-  // Finish (Cobrar) Modal State
   const [finishModal, setFinishModal] = useState<{ isOpen: boolean; data: Inversion | null }>({ isOpen: false, data: null });
   const [finishInterest, setFinishInterest] = useState('');
   const [finishMonth, setFinishMonth] = useState('');
 
-  // Form State
   const initialFormState: Partial<Inversion> = {
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -41,92 +37,50 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- HELPERS PARA BUSCAR TIPOS DE MOVIMIENTO ---
   const findTypeByExactName = (name: string, category: MovementCategory) => {
       const type = movementTypes.find(m => m.name.toUpperCase() === name.toUpperCase() && m.category === category);
       return type ? type.id : null;
   };
 
-  const getRecuperoTypeId = () => {
-      return findTypeByExactName('RECUPERO INVERSIONES PENIEL', MovementCategory.INCOME) || 'ing_recupero_inversion';
-  };
+  const getRecuperoTypeId = () => findTypeByExactName('RECUPERO INVERSIONES PENIEL', MovementCategory.INCOME) || 'ing_recupero_inversion';
+  const getInversionSalidaTypeId = () => findTypeByExactName('INVERSIONES PENIEL', MovementCategory.EXPENSE) || 'egr_inversiones';
+  const getOtrosIngresosTypeId = () => findTypeByExactName('OTROS INGRESOS', MovementCategory.INCOME) || findTypeByExactName('OTRAS ENTRADAS', MovementCategory.INCOME) || 'ing_otras_entradas';
 
-  const getInversionSalidaTypeId = () => {
-      return findTypeByExactName('INVERSIONES PENIEL', MovementCategory.EXPENSE) || 'egr_inversiones';
-  };
-
-  const getOtrosIngresosTypeId = () => {
-      return findTypeByExactName('OTROS INGRESOS', MovementCategory.INCOME) || 
-             findTypeByExactName('OTRAS ENTRADAS', MovementCategory.INCOME) || 
-             'ing_otras_entradas';
-  };
-
-  // --- LOGICA DE VENCIMIENTO ---
   const getMaturityInfo = (dateStr: string, days: number) => {
-      const start = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone shift
+      const start = new Date(dateStr + 'T12:00:00');
       const maturityDate = new Date(start);
       maturityDate.setDate(start.getDate() + days);
-      
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      const mDate = new Date(maturityDate);
-      mDate.setHours(0,0,0,0);
-
+      const today = new Date(); today.setHours(0,0,0,0);
+      const mDate = new Date(maturityDate); mDate.setHours(0,0,0,0);
       const isMature = today >= mDate;
       const diffTime = mDate.getTime() - today.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      return {
-          maturityDate: mDate.toLocaleDateString('es-AR'),
-          isMature,
-          daysRemaining: diffDays > 0 ? diffDays : 0
-      };
+      return { maturityDate: mDate.toLocaleDateString('es-AR'), isMature, daysRemaining: diffDays > 0 ? diffDays : 0 };
   };
 
-  // --- CRUD HANDLERS ---
-
-  const handleEdit = (inv: Inversion) => {
-      setFormData(inv);
-      setIsFormOpen(true);
-  };
-
-  const handleCreate = () => {
-      setFormData({
-          ...initialFormState,
-          currency: currencies[0] || 'ARS'
-      });
-      setIsFormOpen(true);
-  };
+  const handleEdit = (inv: Inversion) => { setFormData(inv); setIsFormOpen(true); };
+  const handleCreate = () => { setFormData({ ...initialFormState, currency: currencies[0] || 'ARS' }); setIsFormOpen(true); };
 
   const handleDelete = async () => {
       if (!deleteData) return;
       setIsSaving(true);
       try {
           if (deleteData.linkedTransactionId && deleteData.status === 'ACTIVE') {
-              try {
-                  await deleteDocument('transactions', deleteData.linkedTransactionId);
-              } catch (e) {
-                  console.error("No se pudo eliminar el movimiento vinculado", e);
-              }
+              try { await deleteDocument('transactions', deleteData.linkedTransactionId); } 
+              catch (e) { console.error(e); }
           }
           await deleteDocument('inversions', deleteData.id);
-          showToast("Inversión anulada/eliminada correctamente", 'success');
+          showToast("Inversión eliminada", 'success');
           setDeleteData(null);
-      } catch (error) {
-          console.error(error);
-          showToast("Error al eliminar", 'error');
-      } finally {
-          setIsSaving(false);
-      }
+      } catch (error) { showToast("Error al eliminar", 'error'); } 
+      finally { setIsSaving(false); }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
           const reader = new FileReader();
-          reader.onloadend = () => {
-              setFormData(prev => ({ ...prev, attachment: reader.result as string }));
-          };
+          reader.onloadend = () => setFormData(prev => ({ ...prev, attachment: reader.result as string }));
           reader.readAsDataURL(file);
       }
   };
@@ -134,68 +88,26 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!formData.description || !formData.amount || !formData.date) return;
-      
       setIsSaving(true);
       try {
           let attachmentUrl = formData.attachment;
           if (attachmentUrl && attachmentUrl.startsWith('data:')) {
-              const fileName = `inversions/${Date.now()}.jpg`;
-              attachmentUrl = await uploadImage(attachmentUrl, fileName);
+              attachmentUrl = await uploadImage(attachmentUrl, `inversions/${Date.now()}.jpg`);
           }
-          
           if (formData.id) {
-              const dataToSave = {
-                  ...formData,
-                  attachment: attachmentUrl || null
-              };
-              await saveDocument('inversions', dataToSave, formData.id);
-
+              await saveDocument('inversions', { ...formData, attachment: attachmentUrl || null }, formData.id);
               if (formData.linkedTransactionId && formData.status === 'ACTIVE') {
-                  try {
-                      const txUpdate = {
-                          date: formData.date,
-                          detail: formData.description,
-                          amount: formData.amount,
-                          currency: formData.currency
-                      };
-                      await saveDocument('transactions', txUpdate, formData.linkedTransactionId);
-                  } catch(e) {
-                      console.error("Error actualizando movimiento vinculado:", e);
-                  }
+                  await saveDocument('transactions', { date: formData.date, detail: formData.description, amount: formData.amount, currency: formData.currency }, formData.linkedTransactionId);
               }
-              showToast("Inversión actualizada", 'success');
+              showToast("Actualizado", 'success');
           } else {
-              const typeId = getInversionSalidaTypeId();
-              const newTx = {
-                 date: formData.date,
-                 centerId: centers.length > 0 ? centers[0].id : 'c1',
-                 movementTypeId: typeId,
-                 detail: formData.description || 'Nueva Inversión',
-                 amount: formData.amount,
-                 currency: formData.currency || 'ARS',
-                 attachment: attachmentUrl || null,
-                 excludeFromPdf: false
-              };
-             
-              const savedTxId = await saveDocument('transactions', newTx);
-              const dataToSave = {
-                  ...formData,
-                  linkedTransactionId: savedTxId,
-                  attachment: attachmentUrl || null,
-                  status: 'ACTIVE'
-              };
-              
-              await saveDocument('inversions', dataToSave);
-              showToast("Inversión registrada y salida de caja generada", 'success');
+              const savedTxId = await saveDocument('transactions', { date: formData.date, centerId: centers[0]?.id || 'c1', movementTypeId: getInversionSalidaTypeId(), detail: formData.description || 'Inversión', amount: formData.amount, currency: formData.currency || 'ARS', attachment: attachmentUrl || null, excludeFromPdf: false });
+              await saveDocument('inversions', { ...formData, linkedTransactionId: savedTxId, attachment: attachmentUrl || null, status: 'ACTIVE' });
+              showToast("Inversión registrada", 'success');
           }
-
           setIsFormOpen(false);
-      } catch (error) {
-          console.error(error);
-          showToast("Error al guardar", 'error');
-      } finally {
-          setIsSaving(false);
-      }
+      } catch (error) { showToast("Error al guardar", 'error'); } 
+      finally { setIsSaving(false); }
   };
 
   const openFinishModal = (inv: Inversion) => {
@@ -207,61 +119,21 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
 
   const handleFinishInversion = async () => {
       if (!finishModal.data) return;
-      
       const interestAmount = parseFloat(finishInterest);
-      if (isNaN(interestAmount) || interestAmount < 0) {
-          showToast("El monto del interés debe ser válido", 'error');
-          return;
-      }
-      if (!finishMonth) {
-          showToast("Debes ingresar el mes", 'error');
-          return;
-      }
-
+      if (isNaN(interestAmount) || interestAmount < 0 || !finishMonth) return;
       setIsSaving(true);
       try {
           const finishDate = new Date().toISOString().split('T')[0];
-          const centerId = centers.length > 0 ? centers[0].id : 'c1';
-
-          const recuperoId = getRecuperoTypeId();
-          const capitalTransaction = {
-              date: finishDate,
-              centerId: centerId,
-              movementTypeId: recuperoId, 
-              detail: `Recupero Capital - ${finishModal.data.description}`,
-              amount: finishModal.data.amount,
-              currency: finishModal.data.currency || 'ARS',
-              attachment: null,
-              excludeFromPdf: true 
-          };
-          await saveDocument('transactions', capitalTransaction);
-
+          const centerId = centers[0]?.id || 'c1';
+          await saveDocument('transactions', { date: finishDate, centerId, movementTypeId: getRecuperoTypeId(), detail: `Recupero - ${finishModal.data.description}`, amount: finishModal.data.amount, currency: finishModal.data.currency || 'ARS', attachment: null, excludeFromPdf: true });
           if (interestAmount > 0) {
-              const otrosIngresosId = getOtrosIngresosTypeId();
-              const interestTransaction = {
-                  date: finishDate,
-                  centerId: centerId,
-                  movementTypeId: otrosIngresosId,
-                  detail: `Interés Ganado - ${finishModal.data.description} - Mes ${finishMonth}`,
-                  amount: interestAmount,
-                  currency: finishModal.data.currency || 'ARS',
-                  attachment: null,
-                  excludeFromPdf: false 
-              };
-              await saveDocument('transactions', interestTransaction);
+              await saveDocument('transactions', { date: finishDate, centerId, movementTypeId: getOtrosIngresosTypeId(), detail: `Interés - ${finishModal.data.description} - ${finishMonth}`, amount: interestAmount, currency: finishModal.data.currency || 'ARS', attachment: null, excludeFromPdf: false });
           }
-
           await saveDocument('inversions', { status: 'FINISHED' }, finishModal.data.id);
-
-          showToast("Inversión finalizada correctamente.", 'success');
+          showToast("Inversión cobrada", 'success');
           setFinishModal({ isOpen: false, data: null });
-
-      } catch (error) {
-          console.error("Error finishing inversion:", error);
-          showToast("Error al procesar el cobro.", 'error');
-      } finally {
-          setIsSaving(false);
-      }
+      } catch (error) { showToast("Error al procesar", 'error'); } 
+      finally { setIsSaving(false); }
   };
 
   const totalInvested = inversions.filter(i => i.status === 'ACTIVE').reduce((acc, curr) => acc + curr.amount, 0);
@@ -270,359 +142,108 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
   const monthlyChartData = useMemo(() => {
     const grouped: Record<string, { capital: number; interest: number }> = {};
     inversions.forEach(inv => {
-        const monthKey = inv.date.substring(0, 7);
-        if (!grouped[monthKey]) {
-            grouped[monthKey] = { capital: 0, interest: 0 };
-        }
-        grouped[monthKey].capital += inv.amount;
-        grouped[monthKey].interest += inv.interest;
+        const key = inv.date.substring(0, 7);
+        if (!grouped[key]) grouped[key] = { capital: 0, interest: 0 };
+        grouped[key].capital += inv.amount;
+        grouped[key].interest += inv.interest;
     });
-    return Object.entries(grouped)
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([key, data]) => {
-            const [y, m] = key.split('-');
-            const date = new Date(parseInt(y), parseInt(m) - 1);
-            const name = date.toLocaleString('es-ES', { month: 'short', year: '2-digit' });
-            return {
-                name: name.charAt(0).toUpperCase() + name.slice(1),
-                ...data
-            };
-        });
+    return Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0])).map(([key, data]) => {
+        const [y, m] = key.split('-');
+        const date = new Date(parseInt(y), parseInt(m) - 1);
+        const name = date.toLocaleString('es-ES', { month: 'short' });
+        return { name: name.charAt(0).toUpperCase() + name.slice(1), ...data };
+    });
   }, [inversions]);
 
   return (
     <div className="space-y-6">
-        {/* Header Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-[#1B365D] rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
                 <div className="relative z-10">
-                    <p className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-1">Capital Activo Total</p>
-                    <h2 className="text-3xl font-bold">$ {totalInvested.toLocaleString('es-AR')}</h2>
+                    <p className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-1">Capital Activo</p>
+                    <h2 className="text-3xl font-bold">$ {totalInvested.toLocaleString()}</h2>
                 </div>
                 <TrendingUp className="absolute right-4 bottom-4 text-white/10 w-24 h-24" />
             </div>
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-                 <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Interés Estimado (Activo)</p>
-                 <h2 className="text-3xl font-bold text-[#84cc16]">$ {potentialInterest.toLocaleString('es-AR')}</h2>
+                 <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Interés Estimado</p>
+                 <h2 className="text-3xl font-bold text-[#84cc16]">$ {potentialInterest.toLocaleString()}</h2>
             </div>
         </div>
 
-        {/* Chart Section */}
         {monthlyChartData.length > 0 && (
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <h3 className="font-bold text-sm text-slate-500 uppercase tracking-wider mb-4">Evolución Mensual de Inversiones</h3>
-                <div className="h-72 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                            <XAxis 
-                                dataKey="name" 
-                                axisLine={false} 
-                                tickLine={false} 
-                                tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} 
-                                dy={10} 
-                            />
-                            <YAxis 
-                                hide={false} 
-                                axisLine={false} 
-                                tickLine={false} 
-                                tick={{ fill: '#94a3b8', fontSize: 11 }}
-                                tickFormatter={(value) => `$${value / 1000}k`} 
-                            />
-                            <Tooltip 
-                                cursor={{ fill: '#f8fafc' }}
-                                contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                formatter={(value: number, name: string) => [
-                                    `$ ${value.toLocaleString('es-AR')}`, 
-                                    name === 'capital' ? 'Capital' : 'Interés'
-                                ]}
-                            />
-                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                            <Bar name="Capital" dataKey="capital" fill="#1B365D" radius={[4, 4, 0, 0]} barSize={40} />
-                            <Bar name="Interés" dataKey="interest" fill="#84cc16" radius={[4, 4, 0, 0]} barSize={40} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={monthlyChartData}>
+                        <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
+                        <YAxis hide />
+                        <Tooltip />
+                        <Bar name="Capital" dataKey="capital" fill="#1B365D" radius={[4, 4, 0, 0]} />
+                        <Bar name="Interés" dataKey="interest" fill="#84cc16" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                </ResponsiveContainer>
             </div>
         )}
 
-        {/* Action Bar */}
-        <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-            <h3 className="font-bold text-lg text-[#1B365D] flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                Cartera de Inversiones
-            </h3>
-            {isAdmin && (
-                <button 
-                    onClick={handleCreate}
-                    className="bg-[#1B365D] text-white px-4 py-2 rounded-lg hover:bg-[#152a48] transition-colors flex items-center gap-2 text-sm font-bold shadow-sm"
-                >
-                    <Plus size={16} /> Nueva Inversión
-                </button>
-            )}
+        <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm">
+            <h3 className="font-bold text-[#1B365D] flex items-center gap-2"><TrendingUp size={18} /> Inversiones</h3>
+            {isAdmin && <button onClick={handleCreate} className="bg-[#1B365D] text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"><Plus size={16} /> Nueva</button>}
         </div>
 
-        {/* List */}
-        <div className="grid grid-cols-1 gap-4">
-            {inversions.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-dashed border-slate-300">
-                    No hay inversiones registradas.
-                </div>
-            ) : (
-                inversions.map(inv => {
-                    const isFinished = inv.status === 'FINISHED';
-                    const { isMature, maturityDate, daysRemaining } = getMaturityInfo(inv.date, inv.days);
-
-                    return (
-                        <div key={inv.id} className={`rounded-xl p-4 border shadow-sm transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-4 ${isFinished ? 'bg-slate-50 border-slate-100 opacity-80' : 'bg-white border-slate-200 hover:shadow-md'}`}>
-                            <div className="flex items-start gap-4">
-                                <div className={`p-3 rounded-lg ${isFinished ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 text-[#1B365D]'}`}>
-                                    {isFinished ? <CheckCircle size={24} /> : <FileText size={24} />}
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-3">
-                                        <h4 className={`font-bold text-lg ${isFinished ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{inv.description}</h4>
-                                        {!isFinished && (
-                                            isMature ? (
-                                                <span className="bg-lime-100 text-lime-700 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                                                    <CheckCircle size={10} /> LISTO PARA COBRAR
-                                                </span>
-                                            ) : (
-                                                <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                                                    <Clock size={10} /> VIGENTE ({daysRemaining} d restantes)
-                                                </span>
-                                            )
-                                        )}
-                                    </div>
-                                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 mt-1">
-                                        <span className="flex items-center gap-1" title="Fecha de inicio"><Calendar size={14} /> {inv.date}</span>
-                                        <span className="flex items-center gap-1" title="Plazo total"><Clock size={14} /> {inv.days} días</span>
-                                        {!isFinished && <span className="flex items-center gap-1 text-[#1B365D] font-medium" title="Fecha de vencimiento calculada"><AlertCircle size={14} /> Vence: {maturityDate}</span>}
-                                        <span className="flex items-center gap-1"><Hash size={14} /> Comp: {inv.voucher}</span>
-                                        <span className="flex items-center gap-1 font-bold bg-slate-100 px-1 rounded">{inv.currency || 'ARS'}</span>
-                                    </div>
-                                    {isFinished && <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-2 py-0.5 rounded mt-2 inline-block uppercase">Inversión Finalizada</span>}
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-between md:justify-end gap-6 border-t md:border-t-0 pt-4 md:pt-0">
-                                <div className="text-right">
-                                    <p className="text-xs text-slate-400 font-bold uppercase">Monto</p>
-                                    <p className={`font-bold text-lg ${isFinished ? 'text-slate-500' : 'text-[#1B365D]'}`}>$ {inv.amount.toLocaleString()}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-xs text-slate-400 font-bold uppercase">Interés</p>
-                                    <p className={`font-bold text-lg ${isFinished ? 'text-slate-500' : 'text-[#84cc16]'}`}>+ $ {inv.interest.toLocaleString()}</p>
-                                </div>
-                                
-                                <div className="flex gap-2 pl-4 border-l border-slate-100">
-                                    {inv.attachment && (
-                                        <button 
-                                            onClick={() => setViewImage(inv.attachment || null)}
-                                            className="p-2 text-slate-400 hover:text-[#1B365D] hover:bg-slate-50 rounded-lg transition-colors"
-                                            title="Ver Adjunto"
-                                        >
-                                            <Eye size={18} />
-                                        </button>
-                                    )}
-                                    {isAdmin && !isFinished && (
-                                        <button 
-                                            onClick={() => openFinishModal(inv)}
-                                            disabled={!isMature}
-                                            className={`p-2 text-white rounded-lg transition-all shadow-sm ${
-                                                isMature 
-                                                ? 'bg-[#84cc16] hover:bg-lime-600 shadow-lime-200' 
-                                                : 'bg-slate-300 cursor-not-allowed opacity-50 shadow-none'
-                                            }`}
-                                            title={isMature ? "Cobrar Interés / Finalizar" : `Bloqueado hasta el ${maturityDate}`}
-                                        >
-                                            <CheckCircle size={18} />
-                                        </button>
-                                    )}
-                                    {isAdmin && (
-                                        <>
-                                            {!isFinished && (
-                                                <button 
-                                                    onClick={() => handleEdit(inv)}
-                                                    className="p-2 text-slate-400 hover:text-[#1B365D] hover:bg-slate-50 rounded-lg transition-colors"
-                                                    title="Editar"
-                                                >
-                                                    <Pencil size={18} />
-                                                </button>
-                                            )}
-                                            <button 
-                                                onClick={() => setDeleteData(inv)}
-                                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                                title="Eliminar"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </>
-                                    )}
+        <div className="space-y-4">
+            {inversions.map(inv => {
+                const isFinished = inv.status === 'FINISHED';
+                const { isMature, maturityDate, daysRemaining } = getMaturityInfo(inv.date, inv.days);
+                return (
+                    <div key={inv.id} className={`rounded-xl p-4 border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 ${isFinished ? 'bg-slate-50 opacity-80' : 'bg-white'}`}>
+                        <div className="flex gap-4">
+                            <div className={`p-3 rounded-lg ${isFinished ? 'bg-slate-200' : 'bg-blue-50 text-[#1B365D]'}`}><FileText size={20} /></div>
+                            <div>
+                                <h4 className={`font-bold ${isFinished ? 'text-slate-400 line-through' : ''}`}>{inv.description}</h4>
+                                <div className="text-[10px] text-slate-400 font-bold flex flex-wrap gap-2 mt-1">
+                                    <span className="bg-slate-100 px-1.5 py-0.5 rounded">{inv.date}</span>
+                                    {!isFinished && <span className={isMature ? 'bg-lime-100 text-lime-700 px-1.5 py-0.5 rounded' : 'bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded'}>{isMature ? 'Listo para cobrar' : `Vence: ${maturityDate}`}</span>}
+                                    {isFinished && <span className="bg-slate-200 px-1.5 py-0.5 rounded uppercase">Finalizada</span>}
                                 </div>
                             </div>
                         </div>
-                    );
-                })
-            )}
-        </div>
-
-        {/* --- FORM MODAL --- */}
-        {isFormOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
-                    <div className="bg-[#1B365D] px-6 py-4 flex justify-between items-center">
-                        <h3 className="text-white font-bold text-lg">
-                            {formData.id ? 'Editar Inversión' : 'Nueva Inversión'}
-                        </h3>
-                        <button onClick={() => setIsFormOpen(false)} className="text-white/80 hover:text-white">
-                            <X size={20} />
-                        </button>
+                        <div className="flex items-center justify-between md:justify-end gap-6">
+                            <div className="text-right"><p className="text-[10px] text-slate-400 font-bold">MONTO</p><p className="font-bold text-[#1B365D]">$ {inv.amount.toLocaleString()}</p></div>
+                            <div className="flex gap-2">
+                                {isAdmin && !isFinished && <button onClick={() => openFinishModal(inv)} disabled={!isMature} className={`p-2 rounded-lg text-white ${isMature ? 'bg-[#84cc16]' : 'bg-slate-200'}`}><CheckCircle size={16} /></button>}
+                                <button onClick={() => setDeleteData(inv)} className="p-2 text-slate-400 hover:text-rose-600"><Trash2 size={16} /></button>
+                            </div>
+                        </div>
                     </div>
-                    
-                    <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha</label>
-                                <div className="relative">
-                                    <Calendar className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
-                                    <input 
-                                        type="date"
-                                        required
-                                        value={formData.date}
-                                        onChange={e => setFormData({...formData, date: e.target.value})}
-                                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Comprobante</label>
-                                <div className="relative">
-                                    <Hash className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
-                                    <input 
-                                        type="text"
-                                        required
-                                        placeholder="N° Certificado"
-                                        value={formData.voucher}
-                                        onChange={e => setFormData({...formData, voucher: e.target.value})}
-                                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
-                                    />
-                                </div>
-                            </div>
-                        </div>
+                );
+            })}
+        </div>
 
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Descripción</label>
-                            <input 
-                                type="text"
-                                required
-                                placeholder="Ej: Plazo Fijo Banco Nación"
-                                value={formData.description}
-                                onChange={e => setFormData({...formData, description: e.target.value})}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
-                            />
+        {isFormOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/50 backdrop-blur-sm overflow-hidden">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh] animate-in zoom-in duration-200">
+                    <div className="bg-[#1B365D] px-4 py-3 flex justify-between items-center shrink-0">
+                        <h3 className="text-white font-bold">{formData.id ? 'Editar Inversión' : 'Nueva Inversión'}</h3>
+                        <button onClick={() => setIsFormOpen(false)} className="text-white/80"><X size={20} /></button>
+                    </div>
+                    <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <input type="date" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full p-2 border rounded text-sm" />
+                            <input type="text" required placeholder="N° Certificado" value={formData.voucher} onChange={e => setFormData({...formData, voucher: e.target.value})} className="w-full p-2 border rounded text-sm" />
                         </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Monto Invertido</label>
-                                <div className="relative">
-                                    <DollarSign className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
-                                    <input 
-                                        type="number"
-                                        required
-                                        min="0"
-                                        step="0.01"
-                                        value={formData.amount}
-                                        onChange={e => setFormData({...formData, amount: parseFloat(e.target.value)})}
-                                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none font-bold text-slate-700"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Moneda</label>
-                                <select 
-                                    value={formData.currency}
-                                    onChange={(e) => setFormData({...formData, currency: e.target.value})}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none bg-white"
-                                >
-                                    {currencies.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
+                        <input type="text" required placeholder="Descripción" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-2 border rounded text-sm" />
+                        <div className="grid grid-cols-2 gap-3">
+                            <input type="number" required placeholder="Monto" value={formData.amount} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value)})} className="w-full p-2 border rounded text-sm font-bold" />
+                            <select value={formData.currency} onChange={e => setFormData({...formData, currency: e.target.value})} className="w-full p-2 border rounded text-sm">{currencies?.map(c => <option key={c} value={c}>{c}</option>)}</select>
                         </div>
-
-                         <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Plazo (Días)</label>
-                                <div className="relative">
-                                    <Clock className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
-                                    <input 
-                                        type="number"
-                                        required
-                                        min="1"
-                                        placeholder="Ej: 30"
-                                        value={formData.days}
-                                        onChange={e => setFormData({...formData, days: parseInt(e.target.value)})}
-                                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Interés Estimado</label>
-                                <div className="relative">
-                                    <DollarSign className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
-                                    <input 
-                                        type="number"
-                                        required
-                                        min="0"
-                                        step="0.01"
-                                        value={formData.interest}
-                                        onChange={e => setFormData({...formData, interest: parseFloat(e.target.value)})}
-                                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none text-[#84cc16] font-bold"
-                                    />
-                                </div>
-                            </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <input type="number" required placeholder="Días" value={formData.days} onChange={e => setFormData({...formData, days: parseInt(e.target.value)})} className="w-full p-2 border rounded text-sm" />
+                            <input type="number" required placeholder="Interés Est." value={formData.interest} onChange={e => setFormData({...formData, interest: parseFloat(e.target.value)})} className="w-full p-2 border rounded text-sm text-[#84cc16] font-bold" />
                         </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Adjunto / Comprobante</label>
-                            {!formData.attachment ? (
-                                <div 
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:bg-slate-50 transition-colors"
-                                >
-                                    <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                                    <p className="text-xs text-slate-500">Click para subir imagen</p>
-                                </div>
-                            ) : (
-                                <div className="relative rounded-lg overflow-hidden border border-slate-200">
-                                    <img src={formData.attachment} alt="Adjunto" className="w-full h-32 object-cover" />
-                                    <button 
-                                        type="button"
-                                        onClick={() => setFormData({...formData, attachment: undefined})}
-                                        className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full shadow-sm hover:bg-red-600"
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                </div>
-                            )}
-                            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-                        </div>
-
-                        <div className="flex gap-3 pt-4 border-t">
-                            <button 
-                                type="button" 
-                                onClick={() => setIsFormOpen(false)}
-                                className="flex-1 py-2.5 border border-slate-300 rounded-lg text-slate-600 font-bold hover:bg-slate-50"
-                            >
-                                Cancelar
-                            </button>
-                            <button 
-                                type="submit" 
-                                disabled={isSaving}
-                                className="flex-1 py-2.5 bg-[#1B365D] text-white rounded-lg font-bold hover:bg-[#152a48] flex justify-center items-center gap-2 disabled:opacity-50"
-                            >
-                                {isSaving ? <Loader2 className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}
-                                Guardar
+                        <div className="pt-4 border-t flex gap-3">
+                            <button type="button" onClick={() => setIsFormOpen(false)} className="flex-1 py-2.5 border rounded-lg text-slate-600 font-bold">Cancelar</button>
+                            <button type="submit" disabled={isSaving} className="flex-1 py-2.5 bg-[#1B365D] text-white rounded-lg font-bold flex justify-center items-center gap-2">
+                                {isSaving ? <Loader2 className="animate-spin w-4 h-4" /> : <Save size={18} />} Guardar
                             </button>
                         </div>
                     </form>
@@ -630,113 +251,24 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
             </div>
         )}
 
-        {/* --- FINISH CONFIRMATION MODAL --- */}
         {finishModal.isOpen && finishModal.data && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                 <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-200">
-                     <div className="bg-[#84cc16] px-6 py-4 flex items-center gap-2">
-                         <CheckCircle className="text-white w-6 h-6" />
-                         <h3 className="text-white font-bold text-lg">Cobrar Intereses</h3>
-                     </div>
-                     <div className="p-6 space-y-4">
-                         <p className="text-slate-600 text-sm">
-                            Esto finalizará la inversión <strong>"{finishModal.data.description}"</strong> y creará un ingreso en la caja.
-                         </p>
-
-                         <div>
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mes a imputar</label>
-                             <input 
-                                type="text"
-                                value={finishMonth}
-                                onChange={(e) => setFinishMonth(e.target.value)}
-                                placeholder="Ej: Octubre"
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none"
-                             />
-                         </div>
-
-                         <div>
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Monto Interés Real</label>
-                             <div className="relative">
-                                <DollarSign className="absolute left-3 top-2.5 text-slate-400 w-4 h-4" />
-                                <input 
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={finishInterest}
-                                    onChange={(e) => setFinishInterest(e.target.value)}
-                                    className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-lg font-bold text-[#84cc16] focus:ring-2 focus:ring-[#84cc16] outline-none"
-                                />
-                             </div>
-                         </div>
-
-                         <div className="flex gap-3 pt-2">
-                             <button 
-                                 onClick={() => setFinishModal({ isOpen: false, data: null })}
-                                 className="flex-1 py-2.5 border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50"
-                             >
-                                 Cancelar
-                             </button>
-                             <button 
-                                 onClick={handleFinishInversion}
-                                 disabled={isSaving}
-                                 className="flex-1 py-2.5 bg-[#84cc16] text-white rounded-lg font-bold hover:bg-lime-600 shadow-sm flex justify-center items-center gap-2"
-                             >
-                                 {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                                 Confirmar
-                             </button>
-                         </div>
-                     </div>
+                 <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+                     <h3 className="text-[#84cc16] font-bold text-lg flex items-center gap-2"><CheckCircle /> Cobrar Intereses</h3>
+                     <input type="text" value={finishMonth} onChange={e => setFinishMonth(e.target.value)} placeholder="Mes" className="w-full p-2 border rounded" />
+                     <input type="number" value={finishInterest} onChange={e => setFinishInterest(e.target.value)} className="w-full p-2 border rounded text-lg font-bold text-[#84cc16]" />
+                     <div className="flex gap-3 pt-2"><button onClick={() => setFinishModal({ isOpen: false, data: null })} className="flex-1 py-2 border rounded">Cerrar</button><button onClick={handleFinishInversion} disabled={isSaving} className="flex-1 py-2 bg-[#84cc16] text-white rounded font-bold">Confirmar</button></div>
                  </div>
             </div>
         )}
-
-        {/* --- DELETE CONFIRMATION MODAL --- */}
+        
         {deleteData && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 text-center animate-in zoom-in duration-200">
-                    <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Trash2 className="w-8 h-8 text-rose-600" />
-                    </div>
-                    <h3 className="text-xl font-bold text-slate-800 mb-2">¿Eliminar Inversión?</h3>
-                    <p className="text-slate-500 text-sm mb-2">
-                        Esta acción no se puede deshacer.
-                    </p>
-                    
-                    {deleteData.status === 'ACTIVE' && deleteData.linkedTransactionId && (
-                        <div className="bg-amber-50 text-amber-800 text-xs p-3 rounded-lg mb-4 text-left border border-amber-100">
-                            <strong>Atención:</strong> Al eliminar esta inversión activa, 
-                            se eliminará automáticamente el movimiento de caja asociado, 
-                            <strong>reversando el egreso y devolviendo el dinero al saldo</strong>.
-                        </div>
-                    )}
-
-                    <div className="flex gap-3 mt-4">
-                        <button 
-                            onClick={() => setDeleteData(null)}
-                            className="flex-1 py-2.5 border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50"
-                        >
-                            Cancelar
-                        </button>
-                        <button 
-                            onClick={handleDelete}
-                            disabled={isSaving}
-                            className="flex-1 py-2.5 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 shadow-sm flex justify-center gap-2 items-center"
-                        >
-                            {isSaving && <Loader2 className="w-4 h-4 animate-spin"/>}
-                            {deleteData.status === 'ACTIVE' ? 'Anular y Borrar' : 'Eliminar'}
-                        </button>
-                    </div>
+                <div className="bg-white rounded-xl p-6 w-full max-w-sm text-center">
+                    <Trash2 className="mx-auto text-rose-600 w-12 h-12 mb-4" />
+                    <h3 className="font-bold mb-2">¿Eliminar Inversión?</h3>
+                    <div className="flex gap-2 mt-4"><button onClick={() => setDeleteData(null)} className="flex-1 py-2 border rounded">No</button><button onClick={handleDelete} className="flex-1 py-2 bg-rose-600 text-white rounded">Sí, Eliminar</button></div>
                 </div>
-            </div>
-        )}
-
-        {/* --- IMAGE VIEWER MODAL --- */}
-        {viewImage && (
-            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90" onClick={() => setViewImage(null)}>
-                <button className="absolute top-4 right-4 text-white hover:text-gray-300">
-                    <X size={32} />
-                </button>
-                <img src={viewImage} alt="Comprobante" className="max-w-full max-h-[90vh] rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
             </div>
         )}
     </div>

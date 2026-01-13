@@ -1,6 +1,5 @@
 
-
-import React, { ReactNode } from 'react';
+import React, { ReactNode, Component } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { ToastProvider } from './components/Toast';
@@ -22,14 +21,19 @@ interface ErrorBoundaryState {
 }
 
 // Simple Error Boundary to catch crash on load
-// Fix: Use React.Component explicitly to ensure state and props are correctly inherited and recognized by the TypeScript compiler.
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// Fix: Explicitly declare state and props properties within the class to resolve TypeScript property existence errors.
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Explicit declarations to fix errors where state and props are not recognized on the class instance
+  public state: ErrorBoundaryState;
+  public props: ErrorBoundaryProps;
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
       hasError: false,
       error: null
     };
+    this.props = props;
   }
 
   static getDerivedStateFromError(error: any): ErrorBoundaryState {
