@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Transaction, MovementCategory, Center, MovementType } from '../types';
 import { FileText, Filter, ArrowUpRight, ArrowDownRight, Eye, Upload, Calendar, X, Download, Search, ChevronDown, Trash2, Pencil, Plus, EyeOff, FileSpreadsheet, TrendingUp, TrendingDown } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -27,6 +27,32 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTypeId, setFilterTypeId] = useState('');
+  
+  // --- Filter Search Logic ---
+  const [filterTypeSearch, setFilterTypeSearch] = useState('');
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const selected = movementTypes.find(m => m.id === filterTypeId);
+    setFilterTypeSearch(selected ? selected.name : '');
+  }, [filterTypeId, movementTypes]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
+        setIsFilterDropdownOpen(false);
+        const current = movementTypes.find(m => m.id === filterTypeId);
+        setFilterTypeSearch(current ? current.name : '');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [filterTypeId, movementTypes]);
+
+  const filteredMovementTypesForFilter = movementTypes.filter(m => 
+    m.name.toLowerCase().includes(filterTypeSearch.toLowerCase())
+  );
 
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
@@ -269,8 +295,82 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
             )}
         </div>
         <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
-             <select value={filterTypeId} onChange={(e) => setFilterTypeId(e.target.value)} className="w-full h-10 pl-3 bg-white border border-slate-300 rounded-lg text-sm"><option value="">Todos los Tipos</option>{movementTypes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-             <div className="relative"><Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full h-10 pl-9 pr-3 border border-slate-300 rounded-lg text-sm" /></div>
+             {/* --- Searchable Type Filter --- */}
+             <div className="relative w-full" ref={filterDropdownRef}>
+                <div 
+                  className="relative group cursor-text"
+                  onClick={() => setIsFilterDropdownOpen(true)}
+                >
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400 group-focus-within:text-[#1B365D]" />
+                  <input 
+                    type="text" 
+                    value={filterTypeSearch}
+                    onChange={(e) => {
+                      setFilterTypeSearch(e.target.value);
+                      setIsFilterDropdownOpen(true);
+                      if (e.target.value === '') setFilterTypeId('');
+                    }}
+                    onFocus={() => setIsFilterDropdownOpen(true)}
+                    placeholder="Filtrar por tipo..."
+                    className="w-full pl-9 pr-8 h-10 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1B365D] outline-none bg-white"
+                  />
+                  {filterTypeId && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFilterTypeId('');
+                        setFilterTypeSearch('');
+                        setIsFilterDropdownOpen(false);
+                      }}
+                      className="absolute right-8 top-3 text-slate-400 hover:text-rose-500"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                  <ChevronDown className={`w-4 h-4 absolute right-3 top-3 text-slate-400 transition-transform ${isFilterDropdownOpen ? 'rotate-180' : ''}`} />
+                </div>
+                
+                {isFilterDropdownOpen && (
+                  <div className="absolute z-[60] w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterTypeId('');
+                        setFilterTypeSearch('');
+                        setIsFilterDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 font-medium ${filterTypeId === '' ? 'text-[#1B365D] bg-blue-50' : 'text-slate-700'}`}
+                    >
+                      Todos los Tipos
+                    </button>
+                    {filteredMovementTypesForFilter.length > 0 ? (
+                      filteredMovementTypesForFilter.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            setFilterTypeId(m.id);
+                            setFilterTypeSearch(m.name);
+                            setIsFilterDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center justify-between group ${filterTypeId === m.id ? 'bg-blue-50 text-[#1B365D] font-bold' : 'text-slate-700'}`}
+                        >
+                          <span>{m.name}</span>
+                          <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase font-black ${m.category === 'INCOME' ? 'bg-lime-100 text-lime-700' : 'bg-rose-100 text-rose-700'}`}>
+                            {m.category === 'INCOME' ? 'In' : 'Out'}
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-slate-400 text-xs italic">
+                        Sin resultados
+                      </div>
+                    )}
+                  </div>
+                )}
+             </div>
+
+             <div className="relative"><Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="text" placeholder="Buscar en detalle..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full h-10 pl-9 pr-3 border border-slate-300 rounded-lg text-sm" /></div>
         </div>
       </div>
 

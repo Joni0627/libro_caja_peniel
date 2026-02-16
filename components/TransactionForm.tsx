@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Transaction, Center, MovementType } from '../types';
-import { Camera, Loader2, X, Save, FileText, Clock, TrendingUp, Hash, DollarSign } from 'lucide-react';
+import { Camera, Loader2, X, Save, FileText, Clock, TrendingUp, Hash, DollarSign, Search, ChevronDown } from 'lucide-react';
 
 interface TransactionFormProps {
   onSave: (transaction: Omit<Transaction, 'id'>, inversionData?: any) => Promise<void>;
@@ -32,6 +32,16 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // --- Searchable Type Select State ---
+  const [typeSearch, setTypeSearch] = useState('');
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
+  const typeDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const selectedType = movementTypes.find(m => m.id === movementTypeId);
+    if (selectedType) setTypeSearch(selectedType.name);
+  }, [movementTypeId, movementTypes]);
+
   useEffect(() => {
     setIsInversionType(movementTypeId === 'egr_inversiones');
   }, [movementTypeId]);
@@ -48,6 +58,24 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         setIncludeInPdf(!initialData.excludeFromPdf);
     }
   }, [initialData]);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target as Node)) {
+        setIsTypeDropdownOpen(false);
+        // Reset search to current selection if closed without selecting
+        const current = movementTypes.find(m => m.id === movementTypeId);
+        if (current) setTypeSearch(current.name);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [movementTypeId, movementTypes]);
+
+  const filteredMovementTypes = movementTypes.filter(m => 
+    m.name.toLowerCase().includes(typeSearch.toLowerCase())
+  );
 
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -112,11 +140,55 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         </div>
       </div>
 
-      <div>
+      {/* --- Searchable Movement Type Select --- */}
+      <div className="relative" ref={typeDropdownRef}>
         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tipo Movimiento</label>
-        <select value={movementTypeId} onChange={(e) => setMovementTypeId(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#1B365D] outline-none bg-white">
-          {movementTypes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
+        <div 
+          className="relative group cursor-text"
+          onClick={() => setIsTypeDropdownOpen(true)}
+        >
+          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400 group-focus-within:text-[#1B365D]" />
+          <input 
+            type="text" 
+            value={typeSearch}
+            onChange={(e) => {
+              setTypeSearch(e.target.value);
+              setIsTypeDropdownOpen(true);
+            }}
+            onFocus={() => setIsTypeDropdownOpen(true)}
+            placeholder="Buscar tipo de movimiento..."
+            className="w-full pl-9 pr-8 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#1B365D] outline-none bg-white font-medium"
+          />
+          <ChevronDown className={`w-4 h-4 absolute right-3 top-2.5 text-slate-400 transition-transform ${isTypeDropdownOpen ? 'rotate-180' : ''}`} />
+        </div>
+        
+        {isTypeDropdownOpen && (
+          <div className="absolute z-[60] w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
+            {filteredMovementTypes.length > 0 ? (
+              filteredMovementTypes.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    setMovementTypeId(m.id);
+                    setTypeSearch(m.name);
+                    setIsTypeDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center justify-between group ${movementTypeId === m.id ? 'bg-blue-50 text-[#1B365D] font-bold' : 'text-slate-700'}`}
+                >
+                  <span>{m.name}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-black ${m.category === 'INCOME' ? 'bg-lime-100 text-lime-700' : 'bg-rose-100 text-rose-700'}`}>
+                    {m.category === 'INCOME' ? 'Entrada' : 'Salida'}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="p-4 text-center text-slate-400 text-xs italic">
+                No se encontraron tipos que coincidan
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {isInversionType && !initialData && (
