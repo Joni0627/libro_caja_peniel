@@ -313,7 +313,6 @@ const App: React.FC = () => {
         {activeTab === 'dashboard' && (
           <Dashboard 
             transactions={transactions} 
-            setChartCurrency={() => {}} // Dummy as it's handled inside Dashboard now
             movementTypes={movementTypes} 
           />
         )}

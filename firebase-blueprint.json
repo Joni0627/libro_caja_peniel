@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial movement record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["INGRESO", "EGRESO"] },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "centerId": { "type": "string" },
+        "movementTypeId": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "isInvestment": { "type": "boolean" },
+        "linkedInvestmentId": { "type": "string" }
+      },
+      "required": ["date", "type", "amount", "currency", "centerId", "movementTypeId"]
+    },
+    "Inversion": {
+      "title": "Inversion",
+      "description": "Investment record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "maturityDate": { "type": "string", "format": "date-time" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "interest": { "type": "number" },
+        "status": { "type": "string", "enum": ["ACTIVE", "FINISHED"] },
+        "linkedTransactionId": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["startDate", "maturityDate", "amount", "currency", "interest", "status"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Application user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "profile": { "type": "string", "enum": ["ADMIN", "USER"] },
+        "photoURL": { "type": "string" }
+      },
+      "required": ["email", "profile"]
+    },
+    "Center": {
+      "title": "Center",
+      "description": "Cost center or location",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "MovementType": {
+      "title": "MovementType",
+      "description": "Category of movement",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["INGRESO", "EGRESO"] }
+      },
+      "required": ["name", "type"]
+    },
+    "Annotation": {
+      "title": "Annotation",
+      "description": "General notes or annotations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" }
+      },
+      "required": ["text", "date", "userId"]
+    }
+  },
+  "firestore": {
+    "transactions": {
+      "schema": { "$ref": "Transaction" },
+      "description": "Collection of financial transactions"
+    },
+    "inversions": {
+      "schema": { "$ref": "Inversion" },
+      "description": "Collection of investments"
+    },
+    "users": {
+      "schema": { "$ref": "User" },
+      "description": "Collection of user profiles"
+    },
+    "centers": {
+      "schema": { "$ref": "Center" },
+      "description": "Collection of cost centers"
+    },
+    "movement_types": {
+      "schema": { "$ref": "MovementType" },
+      "description": "Collection of movement types"
+    },
+    "annotations": {
+      "schema": { "$ref": "Annotation" },
+      "description": "Collection of annotations"
+    },
+    "church_info": {
+      "schema": "object",
+      "description": "General church information"
+    }
+  }
+}

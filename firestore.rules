@@ -1,0 +1,158 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields:
+    //   - uid: string (optional)
+    //   - email: string (required, email format)
+    //   - displayName: string (optional)
+    //   - profile: string (required, 'ADMIN' or 'USER')
+    //   - photoURL: string (optional)
+    //
+    // Collection: transactions
+    // Fields:
+    //   - date: string (required, ISO 8601)
+    //   - type: string (required, 'INGRESO' or 'EGRESO')
+    //   - amount: number (required, positive)
+    //   - currency: string (required)
+    //   - centerId: string (required)
+    //   - movementTypeId: string (required)
+    //   - description: string (optional)
+    //   - imageUrl: string (optional)
+    //
+    // Collection: inversions
+    // Fields:
+    //   - startDate: string (required, ISO 8601)
+    //   - maturityDate: string (required, ISO 8601)
+    //   - amount: number (required, positive)
+    //   - currency: string (required)
+    //   - interest: number (required)
+    //   - status: string (required, 'ACTIVE' or 'FINISHED')
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profile == 'ADMIN' ||
+         request.auth.token.email == "joni0627@gmail.com"); // Default admin
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.email is string && isValidEmail(data.email) &&
+             data.profile in ['ADMIN', 'USER'] &&
+             (data.displayName == null || (data.displayName is string && data.displayName.size() < 100)) &&
+             (data.photoURL == null || (data.photoURL is string && data.photoURL.size() < 500));
+    }
+
+    function isValidTransaction(data) {
+      return isValidDateString(data.date) &&
+             data.type in ['INGRESO', 'EGRESO'] &&
+             data.amount is number && data.amount > 0 &&
+             data.currency is string &&
+             data.centerId is string &&
+             data.movementTypeId is string &&
+             (data.description == null || (data.description is string && data.description.size() < 1000));
+    }
+
+    function isValidInversion(data) {
+      return isValidDateString(data.startDate) &&
+             isValidDateString(data.maturityDate) &&
+             data.amount is number && data.amount > 0 &&
+             data.currency is string &&
+             data.interest is number &&
+             data.status in ['ACTIVE', 'FINISHED'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                      (isAdmin() || (isOwner(userId) && request.resource.data.profile == 'USER'));
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                      (isAdmin() || (isOwner(userId) && request.resource.data.profile == resource.data.profile));
+      allow delete: if isAdmin();
+    }
+
+    // Transactions collection
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidTransaction(request.resource.data);
+    }
+
+    // Inversions collection
+    match /inversions/{inversionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidInversion(request.resource.data);
+    }
+
+    // Master data collections
+    match /centers/{centerId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /movement_types/{typeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /church_info/{infoId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Annotations collection
+    match /annotations/{annotationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

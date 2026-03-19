@@ -72,6 +72,10 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
   const isIncome = (id: string) => movementTypes.find(m => m.id === id)?.category === MovementCategory.INCOME;
 
   const handleDelete = async (id: string) => {
+      if (!isAdmin) {
+          showToast("No tienes permisos para eliminar movimientos", 'error');
+          return;
+      }
       if (window.confirm('¿Estás seguro de que quieres eliminar este movimiento?')) {
           try {
               await deleteDocument('transactions', id);
@@ -83,10 +87,18 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
   };
 
   const handleOpenEdit = (t: Transaction) => {
+      if (!isAdmin) {
+          showToast("No tienes permisos para editar movimientos", 'error');
+          return;
+      }
       setModalState({ isOpen: true, mode: 'edit', data: t });
   };
 
   const handleOpenCreate = () => {
+      if (!isAdmin) {
+          showToast("No tienes permisos para crear movimientos", 'error');
+          return;
+      }
       setModalState({ isOpen: true, mode: 'create' });
   };
 
@@ -377,13 +389,13 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm text-slate-600">
             <thead className="bg-slate-50 text-slate-500 font-medium border-b">
-                <tr><th className="px-6 py-4">Fecha</th><th className="px-6 py-4">Tipo</th><th className="px-6 py-4">Centro</th><th className="px-6 py-4">Detalle</th><th className="px-6 py-4 text-right">Monto</th><th className="px-6 py-4 text-center">Adjunto</th><th className="px-6 py-4 text-right">Acciones</th></tr>
+                <tr><th className="px-6 py-4">Fecha</th><th className="px-6 py-4">Tipo</th><th className="px-6 py-4">Centro</th><th className="px-6 py-4">Detalle</th><th className="px-6 py-4 text-right">Monto</th><th className="px-6 py-4 text-center">Adjunto</th>{isAdmin && <th className="px-6 py-4 text-right">Acciones</th>}</tr>
             </thead>
             <tbody>
                 {groupedTransactions.map((group) => (
                     <React.Fragment key={group.month}>
                         <tr className="bg-slate-100/80 border-y border-slate-200">
-                            <td colSpan={7} className="px-6 py-3">
+                            <td colSpan={isAdmin ? 7 : 6} className="px-6 py-3">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <span className="text-xs font-black text-[#1B365D] uppercase tracking-widest">
                                         {formatGroupDate(group.month, true)}
@@ -426,12 +438,14 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
                                 <td className="px-6 py-4 max-w-xs truncate">{t.detail}</td>
                                 <td className={`px-6 py-4 text-right font-bold ${isIncome(t.movementTypeId) ? 'text-[#84cc16]' : 'text-rose-600'}`}>{t.currency} {t.amount.toLocaleString()}</td>
                                 <td className="px-6 py-4 text-center">{t.attachment ? <button onClick={() => setViewImage(t.attachment || null)} className="text-[#1B365D] p-1"><Eye className="w-4 h-4" /></button> : '-'}</td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => handleOpenEdit(t)} className="p-1 text-slate-400 hover:text-[#1B365D]"><Pencil className="w-4 h-4" /></button>
-                                        <button onClick={() => handleDelete(t.id)} className="p-1 text-slate-400 hover:text-rose-600"><Trash2 className="w-4 h-4" /></button>
-                                    </div>
-                                </td>
+                                {isAdmin && (
+                                    <td className="px-6 py-4 text-right">
+                                        <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => handleOpenEdit(t)} className="p-1 text-slate-400 hover:text-[#1B365D]"><Pencil className="w-4 h-4" /></button>
+                                            <button onClick={() => handleDelete(t.id)} className="p-1 text-slate-400 hover:text-rose-600"><Trash2 className="w-4 h-4" /></button>
+                                        </div>
+                                    </td>
+                                )}
                             </tr>
                         ))}
                     </React.Fragment>

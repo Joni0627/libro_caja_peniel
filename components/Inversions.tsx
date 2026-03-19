@@ -58,11 +58,29 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
       return { maturityDate: mDate.toLocaleDateString('es-AR'), isMature, daysRemaining: diffDays > 0 ? diffDays : 0 };
   };
 
-  const handleEdit = (inv: Inversion) => { setFormData(inv); setIsFormOpen(true); };
-  const handleCreate = () => { setFormData({ ...initialFormState, currency: currencies[0] || 'ARS' }); setIsFormOpen(true); };
+  const handleEdit = (inv: Inversion) => { 
+      if (!isAdmin) {
+          showToast("No tienes permisos para editar inversiones", 'error');
+          return;
+      }
+      setFormData(inv); 
+      setIsFormOpen(true); 
+  };
+  const handleCreate = () => { 
+      if (!isAdmin) {
+          showToast("No tienes permisos para crear inversiones", 'error');
+          return;
+      }
+      setFormData({ ...initialFormState, currency: currencies[0] || 'ARS' }); 
+      setIsFormOpen(true); 
+  };
 
   const handleDelete = async () => {
       if (!deleteData) return;
+      if (!isAdmin) {
+          showToast("No tienes permisos para eliminar inversiones", 'error');
+          return;
+      }
       setIsSaving(true);
       try {
           if (deleteData.linkedTransactionId && deleteData.status === 'ACTIVE') {
@@ -111,6 +129,10 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
   };
 
   const openFinishModal = (inv: Inversion) => {
+    if (!isAdmin) {
+        showToast("No tienes permisos para cobrar inversiones", 'error');
+        return;
+    }
     setFinishModal({ isOpen: true, data: inv });
     setFinishInterest(inv.interest.toString());
     const monthName = new Date().toLocaleString('es-ES', { month: 'long' });
@@ -210,8 +232,21 @@ const Inversions: React.FC<InversionsProps> = ({ isAdmin, inversions, centers = 
                         <div className="flex items-center justify-between md:justify-end gap-6">
                             <div className="text-right"><p className="text-[10px] text-slate-400 font-bold">MONTO</p><p className="font-bold text-[#1B365D]">$ {inv.amount.toLocaleString()}</p></div>
                             <div className="flex gap-2">
-                                {isAdmin && !isFinished && <button onClick={() => openFinishModal(inv)} disabled={!isMature} className={`p-2 rounded-lg text-white ${isMature ? 'bg-[#84cc16]' : 'bg-slate-200'}`}><CheckCircle size={16} /></button>}
-                                <button onClick={() => setDeleteData(inv)} className="p-2 text-slate-400 hover:text-rose-600"><Trash2 size={16} /></button>
+                                {isAdmin && !isFinished && (
+                                    <button onClick={() => openFinishModal(inv)} disabled={!isMature} className={`p-2 rounded-lg text-white ${isMature ? 'bg-[#84cc16]' : 'bg-slate-200'}`} title="Cobrar Inversión">
+                                        <CheckCircle size={16} />
+                                    </button>
+                                )}
+                                {isAdmin && (
+                                    <>
+                                        <button onClick={() => handleEdit(inv)} className="p-2 text-slate-400 hover:text-[#1B365D]" title="Editar Inversión">
+                                            <Pencil size={16} />
+                                        </button>
+                                        <button onClick={() => setDeleteData(inv)} className="p-2 text-slate-400 hover:text-rose-600" title="Eliminar Inversión">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>

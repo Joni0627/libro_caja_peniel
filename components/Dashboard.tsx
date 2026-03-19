@@ -242,7 +242,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, movementTypes }) =>
                     <BarChart data={chartData}>
                         <XAxis dataKey="name" fontSize={11} tickLine={false} axisLine={false} tickMargin={10} />
                         <YAxis fontSize={11} tickLine={false} axisLine={false} />
-                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value: number) => [formatMoney(value, chartCurrency), '']} />
+                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value: any) => [formatMoney(Number(value), chartCurrency), '']} />
                         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                         <Bar dataKey="income" name="Entradas" fill="#84cc16" radius={[4, 4, 0, 0]} maxBarSize={50} />
                         <Bar dataKey="expense" name="Salidas" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={50} />
@@ -279,7 +279,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, movementTypes }) =>
                                         <Cell key={`cell-in-${index}`} fill={INCOME_COLORS[index % INCOME_COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip formatter={(value: number) => formatMoney(value, chartCurrency)} />
+                                <Tooltip formatter={(value: any) => formatMoney(Number(value), chartCurrency)} />
                                 <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px', paddingTop: '20px' }} />
                             </PieChart>
                         </ResponsiveContainer>
@@ -315,7 +315,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, movementTypes }) =>
                                         <Cell key={`cell-ex-${index}`} fill={EXPENSE_COLORS[index % EXPENSE_COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip formatter={(value: number) => formatMoney(value, chartCurrency)} />
+                                <Tooltip formatter={(value: any) => formatMoney(Number(value), chartCurrency)} />
                                 <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px', paddingTop: '20px' }} />
                             </PieChart>
                         </ResponsiveContainer>
