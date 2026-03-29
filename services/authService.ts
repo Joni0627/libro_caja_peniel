@@ -53,48 +53,87 @@ export const subscribeToAuth = (
           const appUser = { id: userDocSnap.id, ...userDocSnap.data() } as User;
           onUserChanged(firebaseUser, appUser);
         } else {
-          // 2. Fallback to email search (for legacy or seeded data)
-          const usersRef = collection(db, 'users');
-          const q = query(usersRef, where("email", "==", firebaseUser.email));
-          const querySnapshot = await getDocs(q);
+          try {
+            // 2. Fallback to email search (for legacy or seeded data)
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where("email", "==", firebaseUser.email));
+            const querySnapshot = await getDocs(q);
 
-          if (!querySnapshot.empty) {
-            const oldDoc = querySnapshot.docs[0];
-            const userData = oldDoc.data() as User;
-            
-            // Migrate to UID-based document
-            const newUserData = {
-              ...userData,
-              id: firebaseUser.uid
-            };
-            await setDoc(doc(db, 'users', firebaseUser.uid), newUserData);
-            
-            // Optionally delete old doc if it wasn't already UID-based
-            if (oldDoc.id !== firebaseUser.uid) {
+            if (!querySnapshot.empty) {
+              const oldDoc = querySnapshot.docs[0];
+              const userData = oldDoc.data() as User;
+              
+              // Migrate to UID-based document
+              const newUserData = {
+                ...userData,
+                id: firebaseUser.uid
+              };
+              await setDoc(doc(db, 'users', firebaseUser.uid), newUserData);
+              
+              // Optionally delete old doc if it wasn't already UID-based
+              if (oldDoc.id !== firebaseUser.uid) {
+                try {
+                  await deleteDoc(doc(db, 'users', oldDoc.id));
+                } catch (e) {
+                  console.warn("Could not delete old user document, might be a permission issue but migration succeeded.");
+                }
+              }
+
+              onUserChanged(firebaseUser, newUserData);
+            } else {
+              // 3. AUTO-CREATE PROFILE FOR NEW USERS
+              const initialAdmin = INITIAL_USERS.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
+              
+              const newUserProfile: User = {
+                id: firebaseUser.uid,
+                name: initialAdmin?.name || firebaseUser.displayName?.split(' ')[0] || 'Usuario',
+                lastName: initialAdmin?.lastName || firebaseUser.displayName?.split(' ').slice(1).join(' ') || 'Nuevo',
+                email: firebaseUser.email,
+                profile: initialAdmin ? UserProfile.ADMIN : UserProfile.USER
+              };
+
+              console.log(`Creating ${newUserProfile.profile} profile for user: ${firebaseUser.email}`);
               try {
-                await deleteDoc(doc(db, 'users', oldDoc.id));
-              } catch (e) {
-                console.warn("Could not delete old user document, might be a permission issue but migration succeeded.");
+                await setDoc(doc(db, 'users', firebaseUser.uid), newUserProfile);
+                onUserChanged(firebaseUser, newUserProfile);
+              } catch (createError) {
+                if (newUserProfile.profile === UserProfile.ADMIN) {
+                  console.warn("Could not create ADMIN profile (permission denied). Falling back to USER profile.");
+                  const fallbackProfile = { ...newUserProfile, profile: UserProfile.USER };
+                  await setDoc(doc(db, 'users', firebaseUser.uid), fallbackProfile);
+                  onUserChanged(firebaseUser, fallbackProfile);
+                } else {
+                  throw createError;
+                }
               }
             }
-
-            onUserChanged(firebaseUser, newUserData);
-          } else {
-            // 3. AUTO-CREATE PROFILE FOR NEW USERS
-            // Check if it's the hardcoded Initial Admin
+          } catch (e) {
+            console.warn("Could not query users by email, likely a permission issue during migration. Checking hardcoded list.");
+            // Fallback: Check if it's a hardcoded Admin
             const initialAdmin = INITIAL_USERS.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
             
             const newUserProfile: User = {
               id: firebaseUser.uid,
-              name: firebaseUser.displayName?.split(' ')[0] || 'Usuario',
-              lastName: firebaseUser.displayName?.split(' ').slice(1).join(' ') || 'Nuevo',
+              name: initialAdmin?.name || firebaseUser.displayName?.split(' ')[0] || 'Usuario',
+              lastName: initialAdmin?.lastName || firebaseUser.displayName?.split(' ').slice(1).join(' ') || 'Nuevo',
               email: firebaseUser.email,
               profile: initialAdmin ? UserProfile.ADMIN : UserProfile.USER
             };
 
-            console.log(`Creating ${newUserProfile.profile} profile for user: ${firebaseUser.email}`);
-            await setDoc(doc(db, 'users', firebaseUser.uid), newUserProfile);
-            onUserChanged(firebaseUser, newUserProfile);
+            console.log(`Creating ${newUserProfile.profile} profile for user: ${firebaseUser.email} (Fallback)`);
+            try {
+              await setDoc(doc(db, 'users', firebaseUser.uid), newUserProfile);
+              onUserChanged(firebaseUser, newUserProfile);
+            } catch (createError) {
+              if (newUserProfile.profile === UserProfile.ADMIN) {
+                console.warn("Could not create ADMIN profile in fallback (permission denied). Falling back to USER profile.");
+                const fallbackProfile = { ...newUserProfile, profile: UserProfile.USER };
+                await setDoc(doc(db, 'users', firebaseUser.uid), fallbackProfile);
+                onUserChanged(firebaseUser, fallbackProfile);
+              } else {
+                throw createError;
+              }
+            }
           }
         }
       } catch (error) {

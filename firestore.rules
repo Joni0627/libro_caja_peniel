@@ -50,12 +50,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // Primary check: Hardcoded admin email
-      // Secondary check: Profile field in the user's document
+      // Source of truth is now ONLY the Firestore users collection
       return isAuthenticated() && 
-        (request.auth.token.email == "joni0627@gmail.com" || 
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profile == 'ADMIN'));
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profile == 'ADMIN';
     }
 
     function isOwner(userId) {
@@ -108,8 +106,11 @@ service cloud.firestore {
       
       // Allow users to create their own profile as 'USER'
       // Admins can create any profile
+      // Bootstrap: Allow the owner (joni0627@gmail.com) to create their own ADMIN profile
       allow create: if isAuthenticated() && 
-                      (isAdmin() || (isOwner(userId) && request.resource.data.profile == 'USER'));
+                      (isAdmin() || 
+                       (isOwner(userId) && 
+                        (request.resource.data.profile == 'USER' || request.auth.token.email == "joni0627@gmail.com")));
       
       // Allow users to update their own profile (but not change their role unless they are admin)
       allow update: if isAuthenticated() && 
