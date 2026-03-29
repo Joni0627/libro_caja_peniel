@@ -9,7 +9,8 @@ import {
   orderBy,
   writeBatch,
   getDocs,
-  getDoc
+  getDoc,
+  getDocFromServer
 } from "firebase/firestore";
 import { 
   ref, 
@@ -18,9 +19,61 @@ import {
   uploadBytes,
   deleteObject
 } from "firebase/storage";
-import { db, storage } from "../firebase";
+import { db, storage, auth } from "../firebase";
 import { Transaction, Center, MovementType, User, ChurchData } from "../types";
 import { INITIAL_CENTERS, INITIAL_MOVEMENT_TYPES, INITIAL_USERS, INITIAL_CURRENCIES } from "../constants";
+
+// --- ERROR HANDLING ---
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+export const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+};
 
 // --- COLLECTIONS ---
 const COLLECTIONS = {
@@ -54,10 +107,21 @@ export const seedInitialData = async () => {
         console.log("Seeding Complete.");
       }
   } catch (error) {
-      console.error("Error en seedInitialData:", error);
-      throw error; 
+      handleFirestoreError(error, OperationType.WRITE, 'initial_seeding');
   }
 };
+
+// --- CONNECTION TEST ---
+export const testConnection = async () => {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if(error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration. ");
+    }
+  }
+};
+testConnection();
 
 // --- REALTIME LISTENERS ---
 
@@ -66,7 +130,7 @@ export const subscribeToCollection = <T>(collectionName: string, callback: (data
   return onSnapshot(q, (snapshot) => {
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
     callback(data);
-  }, (error) => console.error(`Error subscribing to ${collectionName}:`, error));
+  }, (error) => handleFirestoreError(error, OperationType.GET, collectionName));
 };
 
 export const subscribeToTransactions = (callback: (data: Transaction[]) => void) => {
@@ -74,7 +138,7 @@ export const subscribeToTransactions = (callback: (data: Transaction[]) => void)
   return onSnapshot(q, (snapshot) => {
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
     callback(data);
-  }, (error) => console.error("Error subscribing to transactions:", error));
+  }, (error) => handleFirestoreError(error, OperationType.GET, COLLECTIONS.TRANSACTIONS));
 };
 
 export const subscribeToConfig = (callback: (currencies: string[], churchData: ChurchData) => void) => {
@@ -86,18 +150,23 @@ export const subscribeToConfig = (callback: (currencies: string[], churchData: C
     } else {
       callback(INITIAL_CURRENCIES, { name: 'Peniel (MCyM)' });
     }
-  }, (error) => console.error("Error subscribing to config:", error));
+  }, (error) => handleFirestoreError(error, OperationType.GET, COLLECTIONS.CONFIG));
 };
 
 // --- CRUD OPERATIONS ---
 
 export const saveDocument = async (collectionName: string, data: any, id?: string): Promise<string> => {
-  if (id) {
-    await setDoc(doc(db, collectionName, id), data, { merge: true });
-    return id;
-  } else {
-    const docRef = await addDoc(collection(db, collectionName), data);
-    return docRef.id;
+  try {
+    if (id) {
+      await setDoc(doc(db, collectionName, id), data, { merge: true });
+      return id;
+    } else {
+      const docRef = await addDoc(collection(db, collectionName), data);
+      return docRef.id;
+    }
+  } catch (error) {
+    handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, collectionName);
+    return ""; // Unreachable
   }
 };
 
@@ -185,26 +254,37 @@ export const deleteDocument = async (collectionName: string, id: string) => {
       // 2. Eliminar doc de Firestore
       await deleteDoc(docRef);
   } catch (error) {
-      console.error("Error eliminando documento:", error);
-      throw error;
+      handleFirestoreError(error, OperationType.DELETE, collectionName);
   }
 };
 
 export const batchSaveTransactions = async (transactions: Transaction[]) => {
-  const batch = writeBatch(db);
-  transactions.forEach(t => {
-    const ref = doc(collection(db, COLLECTIONS.TRANSACTIONS)); 
-    batch.set(ref, { ...t, id: ref.id });
-  });
-  await batch.commit();
+  try {
+    const batch = writeBatch(db);
+    transactions.forEach(t => {
+      const ref = doc(collection(db, COLLECTIONS.TRANSACTIONS)); 
+      batch.set(ref, { ...t, id: ref.id });
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, COLLECTIONS.TRANSACTIONS);
+  }
 };
 
 export const updateCurrencies = async (currencies: string[]) => {
-  await setDoc(doc(db, COLLECTIONS.CONFIG, 'main'), { currencies }, { merge: true });
+  try {
+    await setDoc(doc(db, COLLECTIONS.CONFIG, 'main'), { currencies }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, COLLECTIONS.CONFIG);
+  }
 };
 
 export const saveChurchData = async (churchData: ChurchData) => {
-  await setDoc(doc(db, COLLECTIONS.CONFIG, 'main'), { churchData }, { merge: true });
+  try {
+    await setDoc(doc(db, COLLECTIONS.CONFIG, 'main'), { churchData }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, COLLECTIONS.CONFIG);
+  }
 };
 
 // --- STORAGE UPLOAD ---

@@ -8,31 +8,36 @@ service cloud.firestore {
     //
     // Collection: users
     // Fields:
-    //   - uid: string (optional)
+    //   - id: string (required, matches Auth UID)
     //   - email: string (required, email format)
-    //   - displayName: string (optional)
+    //   - name: string (required)
+    //   - lastName: string (required)
     //   - profile: string (required, 'ADMIN' or 'USER')
-    //   - photoURL: string (optional)
+    //   - phone: string (optional)
     //
     // Collection: transactions
     // Fields:
     //   - date: string (required, ISO 8601)
-    //   - type: string (required, 'INGRESO' or 'EGRESO')
-    //   - amount: number (required, positive)
-    //   - currency: string (required)
     //   - centerId: string (required)
     //   - movementTypeId: string (required)
-    //   - description: string (optional)
-    //   - imageUrl: string (optional)
+    //   - detail: string (required)
+    //   - amount: number (required, positive)
+    //   - currency: string (required)
+    //   - attachment: string (optional, null or URL)
+    //   - excludeFromPdf: bool (optional)
     //
     // Collection: inversions
     // Fields:
-    //   - startDate: string (required, ISO 8601)
-    //   - maturityDate: string (required, ISO 8601)
+    //   - date: string (required, ISO 8601)
+    //   - description: string (required)
     //   - amount: number (required, positive)
-    //   - currency: string (required)
+    //   - currency: string (optional)
+    //   - days: number (required)
     //   - interest: number (required)
+    //   - voucher: string (required)
     //   - status: string (required, 'ACTIVE' or 'FINISHED')
+    //   - attachment: string (optional)
+    //   - linkedTransactionId: string (optional)
     //
     // ===============================================================
 
@@ -47,19 +52,11 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profile == 'ADMIN' ||
-         request.auth.token.email == "joni0627@gmail.com"); // Default admin
+         request.auth.token.email == "joni0627@gmail.com"); // Default admin fallback
     }
 
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
     }
 
     function isValidEmail(email) {
@@ -67,7 +64,7 @@ service cloud.firestore {
     }
 
     function isValidDateString(dateStr) {
-      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}.*");
     }
 
     // ===============================================================
@@ -77,26 +74,23 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.email is string && isValidEmail(data.email) &&
              data.profile in ['ADMIN', 'USER'] &&
-             (data.displayName == null || (data.displayName is string && data.displayName.size() < 100)) &&
-             (data.photoURL == null || (data.photoURL is string && data.photoURL.size() < 500));
+             data.name is string && data.name.size() > 0 &&
+             data.lastName is string && data.lastName.size() > 0;
     }
 
     function isValidTransaction(data) {
       return isValidDateString(data.date) &&
-             data.type in ['INGRESO', 'EGRESO'] &&
-             data.amount is number && data.amount > 0 &&
+             data.amount is number && data.amount >= 0 &&
              data.currency is string &&
              data.centerId is string &&
              data.movementTypeId is string &&
-             (data.description == null || (data.description is string && data.description.size() < 1000));
+             data.detail is string;
     }
 
     function isValidInversion(data) {
-      return isValidDateString(data.startDate) &&
-             isValidDateString(data.maturityDate) &&
-             data.amount is number && data.amount > 0 &&
-             data.currency is string &&
-             data.interest is number &&
+      return isValidDateString(data.date) &&
+             data.amount is number && data.amount >= 0 &&
+             data.description is string &&
              data.status in ['ACTIVE', 'FINISHED'];
     }
 
@@ -137,7 +131,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /church_info/{infoId} {
+    match /app_config/{configId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
@@ -145,9 +139,7 @@ service cloud.firestore {
     // Annotations collection
     match /annotations/{annotationId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
     // Default deny

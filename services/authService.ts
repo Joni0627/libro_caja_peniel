@@ -4,7 +4,7 @@ import {
   onAuthStateChanged,
   User as FirebaseUser
 } from "firebase/auth";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { User, UserProfile } from "../types";
 import { INITIAL_USERS } from "../constants";
@@ -44,29 +44,52 @@ export const subscribeToAuth = (
 
   return onAuthStateChanged(auth, async (firebaseUser) => {
     if (firebaseUser && firebaseUser.email) {
-      // 1. User is authenticated in Firebase Auth
-      // 2. Fetch their profile from Firestore 'users' collection using email
       try {
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where("email", "==", firebaseUser.email));
-        const querySnapshot = await getDocs(q);
+        // 1. Try to fetch by UID first (the correct way)
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
 
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          const appUser = { id: doc.id, ...doc.data() } as User;
+        if (userDocSnap.exists()) {
+          const appUser = { id: userDocSnap.id, ...userDocSnap.data() } as User;
           onUserChanged(firebaseUser, appUser);
         } else {
-          // 3. FALLBACK FOR FIRST RUN (BOOTSTRAPPING)
-          // If the user logs in via Auth but doesn't exist in DB yet, check if it's the hardcoded Initial Admin.
-          // This allows App.tsx to load, which triggers seedInitialData(), creating the real DB record.
-          const initialAdmin = INITIAL_USERS.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
-          
-          if (initialAdmin) {
-            console.log("First run detected. Allowing temporary access to seed DB.");
-            onUserChanged(firebaseUser, initialAdmin);
+          // 2. Fallback to email search (for legacy or seeded data)
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where("email", "==", firebaseUser.email));
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty) {
+            const oldDoc = querySnapshot.docs[0];
+            const userData = oldDoc.data() as User;
+            
+            // Migrate to UID-based document
+            await setDoc(doc(db, 'users', firebaseUser.uid), {
+              ...userData,
+              id: firebaseUser.uid
+            });
+            
+            // Optionally delete old doc if it wasn't already UID-based
+            if (oldDoc.id !== firebaseUser.uid) {
+              await deleteDoc(doc(db, 'users', oldDoc.id));
+            }
+
+            onUserChanged(firebaseUser, { ...userData, id: firebaseUser.uid });
           } else {
-            console.warn("User logged in but no profile found in Firestore and not in initial list.");
-            onUserChanged(firebaseUser, null);
+            // 3. FALLBACK FOR FIRST RUN (BOOTSTRAPPING)
+            const initialAdmin = INITIAL_USERS.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
+            
+            if (initialAdmin) {
+              console.log("First run detected. Creating profile for initial admin.");
+              const newAdmin = {
+                ...initialAdmin,
+                id: firebaseUser.uid
+              };
+              await setDoc(doc(db, 'users', firebaseUser.uid), newAdmin);
+              onUserChanged(firebaseUser, newAdmin);
+            } else {
+              console.warn("User logged in but no profile found in Firestore.");
+              onUserChanged(firebaseUser, null);
+            }
           }
         }
       } catch (error) {
@@ -74,7 +97,6 @@ export const subscribeToAuth = (
         onUserChanged(firebaseUser, null);
       }
     } else {
-      // User is logged out
       onUserChanged(null, null);
     }
   });

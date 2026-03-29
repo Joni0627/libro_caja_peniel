@@ -99,11 +99,21 @@ const App: React.FC = () => {
 
         } catch (error: any) {
             console.error("Error fatal inicializando Firebase:", error);
-            if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
-                setInitError("Permisos denegados: Verifica las Reglas de Firestore en la consola de Firebase.");
-            } else {
-                setInitError("No se pudo conectar con la base de datos.");
+            let errorMessage = "No se pudo conectar con la base de datos.";
+            
+            try {
+                // Try to parse detailed error info if it's a JSON string
+                const detailedError = JSON.parse(error.message);
+                if (detailedError.error?.includes('insufficient permissions')) {
+                    errorMessage = "Permisos denegados: Tu perfil no tiene autorización para esta acción o las Reglas de Firestore son incorrectas.";
+                }
+            } catch (e) {
+                if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+                    errorMessage = "Permisos denegados: Verifica las Reglas de Firestore en la consola de Firebase.";
+                }
             }
+            
+            setInitError(errorMessage);
         } finally {
             setIsLoading(false);
         }
