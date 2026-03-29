@@ -161,13 +161,10 @@ export const subscribeToConfig = (callback: (currencies: string[], churchData: C
 
 export const saveDocument = async (collectionName: string, data: any, id?: string): Promise<string> => {
   try {
-    if (id) {
-      await setDoc(doc(db, collectionName, id), data, { merge: true });
-      return id;
-    } else {
-      const docRef = await addDoc(collection(db, collectionName), data);
-      return docRef.id;
-    }
+    const docId = id || doc(collection(db, collectionName)).id;
+    const finalData = { ...data, id: docId };
+    await setDoc(doc(db, collectionName, docId), finalData, { merge: true });
+    return docId;
   } catch (error) {
     handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, collectionName);
     return ""; // Unreachable
