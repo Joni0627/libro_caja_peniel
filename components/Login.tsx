@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { login } from '../services/authService';
 import { subscribeToConfig } from '../services/firebaseService';
-import { Loader2, Lock, Mail, AlertCircle } from 'lucide-react';
+import { Loader2, Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {}
 
 const Login: React.FC<LoginProps> = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -105,13 +106,21 @@ const Login: React.FC<LoginProps> = () => {
               <div className="relative">
                 <Lock className="w-5 h-5 absolute left-3 top-3 text-slate-400" />
                 <input 
-                  type="password" 
+                  type={showPassword ? "text" : "password"} 
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#1B365D] outline-none transition-all"
+                  className="w-full pl-10 pr-12 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#1B365D] outline-none transition-all"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-[#1B365D] transition-colors"
+                  title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
             </div>
 
