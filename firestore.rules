@@ -51,8 +51,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profile == 'ADMIN' ||
-         request.auth.token.email == "joni0627@gmail.com"); // Default admin fallback
+        (request.auth.token.email == "joni0627@gmail.com" || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profile == 'ADMIN'));
     }
 
     function isOwner(userId) {
@@ -111,35 +112,37 @@ service cloud.firestore {
     // Transactions collection
     match /transactions/{transactionId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() && isValidTransaction(request.resource.data);
+      allow create, update: if isAdmin() && isValidTransaction(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     // Inversions collection
     match /inversions/{inversionId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() && isValidInversion(request.resource.data);
+      allow create, update: if isAdmin() && isValidInversion(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     // Master data collections
     match /centers/{centerId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /movement_types/{typeId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /app_config/{configId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     // Annotations collection
     match /annotations/{annotationId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     // Default deny
