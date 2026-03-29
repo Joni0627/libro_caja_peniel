@@ -80,5 +80,12 @@ export const INITIAL_USERS: User[] = [
     email: 'admin@peniel.com',
     profile: UserProfile.ADMIN,
     phone: '+54 351 000000'
+  },
+  {
+    id: 'admin2',
+    name: 'Joni',
+    lastName: 'Admin',
+    email: 'joni0627@gmail.com',
+    profile: UserProfile.ADMIN
   }
 ];

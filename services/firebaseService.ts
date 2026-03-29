@@ -150,7 +150,11 @@ export const subscribeToConfig = (callback: (currencies: string[], churchData: C
     } else {
       callback(INITIAL_CURRENCIES, { name: 'Peniel (MCyM)' });
     }
-  }, (error) => handleFirestoreError(error, OperationType.GET, COLLECTIONS.CONFIG));
+  }, (error) => {
+    console.warn("Error fetching config (branding/config):", error);
+    // Fallback to defaults without throwing to prevent app crash on login page
+    callback(INITIAL_CURRENCIES, { name: 'Peniel (MCyM)' });
+  });
 };
 
 // --- CRUD OPERATIONS ---

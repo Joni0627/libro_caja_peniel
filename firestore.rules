@@ -144,8 +144,8 @@ service cloud.firestore {
     }
 
     match /app_config/{configId} {
-      // Allow reading app config for all authenticated users
-      allow read: if isAuthenticated();
+      // Allow reading app config for all users (needed for branding on Login page)
+      allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
