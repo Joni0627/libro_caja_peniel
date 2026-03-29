@@ -18,6 +18,7 @@ import {
   uploadImage
 } from './services/firebaseService';
 import { subscribeToAuth, logout } from './services/authService';
+import { auth } from './firebase';
 import { useToast } from './components/Toast';
 
 const App: React.FC = () => {
