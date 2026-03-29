@@ -50,6 +50,8 @@ service cloud.firestore {
     }
 
     function isAdmin() {
+      // Primary check: Hardcoded admin email
+      // Secondary check: Profile field in the user's document
       return isAuthenticated() && 
         (request.auth.token.email == "joni0627@gmail.com" || 
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
@@ -101,11 +103,18 @@ service cloud.firestore {
 
     // Users collection
     match /users/{userId} {
+      // Allow any authenticated user to read any profile (needed for searches and basic info)
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+      
+      // Allow users to create their own profile as 'USER'
+      // Admins can create any profile
+      allow create: if isAuthenticated() && 
                       (isAdmin() || (isOwner(userId) && request.resource.data.profile == 'USER'));
-      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+      
+      // Allow users to update their own profile (but not change their role unless they are admin)
+      allow update: if isAuthenticated() && 
                       (isAdmin() || (isOwner(userId) && request.resource.data.profile == resource.data.profile));
+      
       allow delete: if isAdmin();
     }
 
@@ -135,6 +144,7 @@ service cloud.firestore {
     }
 
     match /app_config/{configId} {
+      // Allow reading app config for all authenticated users
       allow read: if isAuthenticated();
       allow create, update, delete: if isAdmin();
     }

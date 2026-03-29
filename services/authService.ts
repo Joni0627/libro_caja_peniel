@@ -63,37 +63,45 @@ export const subscribeToAuth = (
             const userData = oldDoc.data() as User;
             
             // Migrate to UID-based document
-            await setDoc(doc(db, 'users', firebaseUser.uid), {
+            const newUserData = {
               ...userData,
               id: firebaseUser.uid
-            });
+            };
+            await setDoc(doc(db, 'users', firebaseUser.uid), newUserData);
             
             // Optionally delete old doc if it wasn't already UID-based
             if (oldDoc.id !== firebaseUser.uid) {
-              await deleteDoc(doc(db, 'users', oldDoc.id));
+              try {
+                await deleteDoc(doc(db, 'users', oldDoc.id));
+              } catch (e) {
+                console.warn("Could not delete old user document, might be a permission issue but migration succeeded.");
+              }
             }
 
-            onUserChanged(firebaseUser, { ...userData, id: firebaseUser.uid });
+            onUserChanged(firebaseUser, newUserData);
           } else {
-            // 3. FALLBACK FOR FIRST RUN (BOOTSTRAPPING)
+            // 3. AUTO-CREATE PROFILE FOR NEW USERS
+            // Check if it's the hardcoded Initial Admin
             const initialAdmin = INITIAL_USERS.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
             
-            if (initialAdmin) {
-              console.log("First run detected. Creating profile for initial admin.");
-              const newAdmin = {
-                ...initialAdmin,
-                id: firebaseUser.uid
-              };
-              await setDoc(doc(db, 'users', firebaseUser.uid), newAdmin);
-              onUserChanged(firebaseUser, newAdmin);
-            } else {
-              console.warn("User logged in but no profile found in Firestore.");
-              onUserChanged(firebaseUser, null);
-            }
+            const newUserProfile: User = {
+              id: firebaseUser.uid,
+              name: firebaseUser.displayName?.split(' ')[0] || 'Usuario',
+              lastName: firebaseUser.displayName?.split(' ').slice(1).join(' ') || 'Nuevo',
+              email: firebaseUser.email,
+              profile: initialAdmin ? UserProfile.ADMIN : UserProfile.USER
+            };
+
+            console.log(`Creating ${newUserProfile.profile} profile for user: ${firebaseUser.email}`);
+            await setDoc(doc(db, 'users', firebaseUser.uid), newUserProfile);
+            onUserChanged(firebaseUser, newUserProfile);
           }
         }
       } catch (error) {
-        console.error("Error fetching user profile:", error);
+        console.error("Error fetching/creating user profile:", error);
+        // If we can't even fetch the profile, we might be in a weird state.
+        // Try to provide at least the firebase user so the app doesn't stay stuck on login if possible,
+        // but App.tsx expects an appUser to proceed.
         onUserChanged(firebaseUser, null);
       }
     } else {

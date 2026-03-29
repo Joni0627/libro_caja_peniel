@@ -73,7 +73,11 @@ const App: React.FC = () => {
     let unsubAnnotations: () => void;
 
     const initData = async () => {
-        if (!currentUser) return; // Don't fetch data if not logged in
+        // Double check both our state and the Firebase instance
+        if (!currentUser || !auth.currentUser) {
+            console.log("Waiting for full authentication before fetching data...");
+            return;
+        }
 
         try {
             await seedInitialData();
