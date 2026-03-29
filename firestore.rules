@@ -50,10 +50,14 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // Source of truth is now ONLY the Firestore users collection
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profile == 'ADMIN';
+      // Source of truth is Firestore users collection
+      // Check both UID-based and Email-based (pre-authorized) documents
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profile == 'ADMIN') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.profile == 'ADMIN')
+      );
     }
 
     function isOwner(userId) {
@@ -116,7 +120,9 @@ service cloud.firestore {
       allow update: if isAuthenticated() && 
                       (isAdmin() || (isOwner(userId) && request.resource.data.profile == resource.data.profile));
       
-      allow delete: if isAdmin();
+      // Allow users to delete their own profile (useful for migration from email-based or random-ID to UID-based)
+      // Admins can delete any profile
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.email == request.auth.token.email);
     }
 
     // Transactions collection

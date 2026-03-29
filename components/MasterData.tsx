@@ -175,11 +175,13 @@ const MasterData: React.FC<MasterDataProps> = ({
              const data = {
                   name: newUser.name,
                   lastName: newUser.lastName,
-                  email: newUser.email,
+                  email: newUser.email.toLowerCase(),
                   phone: newUser.phone || null,
                   profile: newUser.profile || UserProfile.USER
              };
-             await saveDocument('users', data, editingId || undefined);
+             // Use email as ID for new users to allow pre-authorization in rules
+             const docId = editingId || newUser.email.toLowerCase();
+             await saveDocument('users', data, docId);
              showToast(editingId ? "Usuario actualizado" : "Usuario creado", 'success');
              closeModal();
           } finally {

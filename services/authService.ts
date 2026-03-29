@@ -56,7 +56,8 @@ export const subscribeToAuth = (
           try {
             // 2. Fallback to email search (for legacy or seeded data)
             const usersRef = collection(db, 'users');
-            const q = query(usersRef, where("email", "==", firebaseUser.email));
+            const emailToQuery = firebaseUser.email.toLowerCase();
+            const q = query(usersRef, where("email", "==", emailToQuery));
             const querySnapshot = await getDocs(q);
 
             if (!querySnapshot.empty) {
