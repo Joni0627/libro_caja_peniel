@@ -401,68 +401,77 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
 
              <div className="relative"><Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="text" placeholder="Buscar en detalle..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full h-10 pl-9 pr-3 border border-slate-300 rounded-lg text-sm" /></div>
         </div>
-      </div>
 
-      {/* --- TOTALES POR RANGO DE FECHAS --- */}
-      {filterMode === 'range' && rangeTotals && (
-        <div className="bg-slate-50 p-4 border-b border-slate-200 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="flex items-center gap-2 mb-3">
-            <Calendar className="w-4 h-4 text-[#1B365D]" />
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Resumen del Rango Seleccionado ({dateRange.start} al {dateRange.end})
-            </span>
-          </div>
-          
-          {Object.keys(rangeTotals).length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Object.entries(rangeTotals).map(([curr, val]) => {
-                const isPositive = val.balance >= 0;
-                return (
-                  <div key={curr} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-sm font-black text-[#1B365D] bg-slate-100 px-2 py-0.5 rounded">
-                        {curr}
-                      </span>
-                      <span className={`text-xs font-black px-2 py-0.5 rounded ${isPositive ? 'bg-lime-100 text-lime-800' : 'bg-rose-100 text-rose-800'}`}>
-                        {isPositive ? 'Balance Positivo' : 'Déficit'}
-                      </span>
-                    </div>
-                    
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-lime-50/50 border border-lime-100">
-                        <span className="text-[9px] font-bold text-lime-700 uppercase tracking-wider mb-1">Entradas</span>
-                        <div className="flex items-center justify-center gap-0.5 text-lime-600 font-black text-xs sm:text-sm">
-                          <TrendingUp size={12} className="shrink-0" />
-                          <span>$ {val.income.toLocaleString('es-AR')}</span>
-                        </div>
+        {/* --- TOTALES POR RANGO DE FECHAS INTEGRADOS --- */}
+        {filterMode === 'range' && rangeTotals && (
+          <div className="col-span-12 mt-2 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex items-center gap-2 mb-3">
+              <Calendar className="w-4.5 h-4.5 text-[#1B365D]" />
+              <span className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                Resumen del Rango Seleccionado ({dateRange.start} al {dateRange.end})
+              </span>
+            </div>
+            
+            {Object.keys(rangeTotals).length > 0 ? (
+              <div className="space-y-3">
+                {Object.entries(rangeTotals).map(([curr, val]) => {
+                  const isPositive = val.balance >= 0;
+                  return (
+                    <div key={curr} className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-sm">
+                      <div className="flex items-center justify-between lg:justify-start gap-3 lg:w-48 shrink-0">
+                        <span className="text-sm font-black text-[#1B365D] bg-white border border-slate-200 px-3 py-1 rounded-lg shadow-sm">
+                          {curr}
+                        </span>
+                        <span className={`text-xs font-black px-2.5 py-1 rounded-full ${isPositive ? 'bg-lime-100 text-lime-800' : 'bg-rose-100 text-rose-800'}`}>
+                          {isPositive ? 'Balance Positivo' : 'Déficit'}
+                        </span>
                       </div>
                       
-                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-rose-50/50 border border-rose-100">
-                        <span className="text-[9px] font-bold text-rose-700 uppercase tracking-wider mb-1">Salidas</span>
-                        <div className="flex items-center justify-center gap-0.5 text-rose-600 font-black text-xs sm:text-sm">
-                          <TrendingDown size={12} className="shrink-0" />
-                          <span>$ {val.expense.toLocaleString('es-AR')}</span>
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* Entradas */}
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200 shadow-xs">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Entradas</span>
+                            <span className="text-lime-600 font-black text-xs sm:text-sm flex items-center gap-1 mt-0.5">
+                              <TrendingUp size={14} className="shrink-0" />
+                              $ {val.income.toLocaleString('es-AR')}
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                        
+                        {/* Salidas */}
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200 shadow-xs">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Salidas</span>
+                            <span className="text-rose-600 font-black text-xs sm:text-sm flex items-center gap-1 mt-0.5">
+                              <TrendingDown size={14} className="shrink-0" />
+                              $ {val.expense.toLocaleString('es-AR')}
+                            </span>
+                          </div>
+                        </div>
 
-                      <div className={`flex flex-col items-center justify-center p-2 rounded-lg ${isPositive ? 'bg-blue-50/50 border-blue-100' : 'bg-amber-50/50 border-amber-100'} border`}>
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">Resultado</span>
-                        <div className={`font-black text-xs sm:text-sm ${isPositive ? 'text-[#1B365D]' : 'text-rose-600'}`}>
-                          $ {val.balance.toLocaleString('es-AR')}
+                        {/* Resultado */}
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200 shadow-xs">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Resultado</span>
+                            <span className={`font-black text-xs sm:text-sm mt-0.5 ${isPositive ? 'text-[#1B365D]' : 'text-rose-600'}`}>
+                              $ {val.balance.toLocaleString('es-AR')}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-center p-6 bg-white border border-dashed border-slate-200 rounded-xl text-slate-400 text-sm">
-              No hay movimientos registrados en el rango seleccionado.
-            </div>
-          )}
-        </div>
-      )}
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center p-6 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-slate-400 text-sm">
+                No hay movimientos registrados en el rango seleccionado.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm text-slate-600">
