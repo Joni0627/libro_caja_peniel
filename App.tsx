@@ -18,10 +18,78 @@ import {
   uploadImage
 } from './services/firebaseService';
 import { subscribeToAuth, logout } from './services/authService';
-import { auth } from './firebase';
+import { auth, isFirebaseConfigured } from './firebase';
 import { useToast } from './components/Toast';
 
 const App: React.FC = () => {
+  if (!isFirebaseConfigured) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 md:p-12">
+        <div className="bg-white max-w-2xl w-full rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+          {/* Header */}
+          <div className="bg-[#1B365D] p-6 text-center relative">
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-500"></div>
+            <h1 className="text-2xl font-black text-white tracking-tight flex items-center justify-center gap-2">
+              <AlertTriangle className="w-6 h-6 text-amber-500 animate-pulse" />
+              Configuración de Firebase Requerida
+            </h1>
+            <p className="text-blue-200 text-xs uppercase font-bold tracking-wider mt-1">Libro de Caja Peniel</p>
+          </div>
+          
+          {/* Body */}
+          <div className="p-8 space-y-6 text-slate-700">
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-amber-800 text-sm leading-relaxed flex gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-bold">Faltan variables de entorno críticas de Firebase.</strong> La aplicación no puede inicializarse ni conectarse a la base de datos hasta que se configuren estos valores en Vercel o en el entorno de desarrollo.
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Variables que deben configurarse:</h3>
+              <div className="bg-slate-900 rounded-xl p-4 font-mono text-xs text-slate-300 space-y-2 border border-slate-800">
+                <div><span className="text-slate-500"># Credenciales de Firebase (Vite)</span></div>
+                <div><span className="text-amber-400">VITE_FIREBASE_API_KEY</span>=<span className="text-emerald-400">"tu-api-key"</span></div>
+                <div><span className="text-amber-400">VITE_FIREBASE_AUTH_DOMAIN</span>=<span className="text-emerald-400">"tu-auth-domain"</span></div>
+                <div><span className="text-amber-400">VITE_FIREBASE_PROJECT_ID</span>=<span className="text-emerald-400">"tu-project-id"</span></div>
+                <div><span className="text-amber-400">VITE_FIREBASE_APP_ID</span>=<span className="text-emerald-400">"tu-app-id"</span></div>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-2 border-t border-slate-100">
+              <h3 className="font-bold text-slate-800 text-sm">¿Cómo solucionar esto?</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <h4 className="font-black text-xs text-[#1B365D] uppercase tracking-wider mb-2">En Google AI Studio</h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Ve al menú de <strong className="font-semibold text-slate-800">Ajustes (Settings)</strong> en la esquina superior derecha del chat, ingresa los valores correspondientes en la sección de variables de entorno, guarda los cambios y la app se recargará sola.
+                  </p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <h4 className="font-black text-xs text-[#1B365D] uppercase tracking-wider mb-2">En Vercel (Producción)</h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Ve al panel de control del proyecto en Vercel, dirígete a <strong className="font-semibold text-slate-800">Settings &gt; Environment Variables</strong>, añade cada una de las variables listadas arriba con sus valores reales y redespliega la aplicación.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Footer */}
+          <div className="bg-slate-50 p-6 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+            <span>Libro de Caja Peniel &bull; Sistema de Gestión</span>
+            <button 
+              onClick={() => window.location.reload()}
+              className="bg-[#1B365D] text-white font-bold py-2 px-4 rounded-lg hover:bg-[#152a48] transition-colors"
+            >
+              Recargar Página
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Update Type for Tab
   const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'inversions' | 'annotations' | 'masters'>('dashboard');
   const [isLoading, setIsLoading] = useState(true);

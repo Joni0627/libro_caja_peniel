@@ -21,9 +21,14 @@ const requiredEnvVars = [
   'VITE_FIREBASE_APP_ID'
 ];
 
+export const isFirebaseConfigured = requiredEnvVars.every(key => {
+  const val = getEnv(key);
+  return !!val && val.trim() !== "" && !val.includes("placeholder") && !val.includes("YOUR_");
+});
+
 const missingVars = requiredEnvVars.filter(key => !getEnv(key));
-if (missingVars.length > 0) {
-  console.error(`🔴 FALTAN VARIABLES DE ENTORNO EN VERCEL: ${missingVars.join(', ')}. La app no funcionará correctamente.`);
+if (!isFirebaseConfigured) {
+  console.warn(`🔴 CONFIGURACIÓN DE FIREBASE INCOMPLETA O CON VALORES DE EJEMPLO. Faltan: ${missingVars.join(', ')}`);
 }
 
 // Configuración de Firebase
@@ -38,36 +43,38 @@ const firebaseConfig = {
 };
 
 // Declarar variables a exportar
-let app;
+let app: any = null;
 let db: Firestore = {} as Firestore;
 let storage: FirebaseStorage = {} as FirebaseStorage;
 let auth: Auth = {} as Auth;
 
-try {
-  // Inicializar Firebase
-  app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-  
-  // --- HABILITAR PERSISTENCIA OFFLINE (CACHÉ) ---
-  // Esto guarda los datos en el dispositivo (IndexedDB) para que la app cargue 
-  // instantáneamente y no consuma lecturas si los datos no han cambiado.
-  enableIndexedDbPersistence(db).catch((err) => {
-      if (err.code == 'failed-precondition') {
-          // Ocurre si hay multiples pestañas abiertas
-          console.warn("La persistencia solo puede habilitarse en una pestaña a la vez.");
-      } else if (err.code == 'unimplemented') {
-          // El navegador no lo soporta
-          console.warn("El navegador no soporta persistencia offline.");
-      }
-  });
+if (isFirebaseConfigured) {
+  try {
+    // Inicializar Firebase
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    
+    // --- HABILITAR PERSISTENCIA OFFLINE (CACHÉ) ---
+    // Esto guarda los datos en el dispositivo (IndexedDB) para que la app cargue 
+    // instantáneamente y no consuma lecturas si los datos no han cambiado.
+    enableIndexedDbPersistence(db).catch((err) => {
+        if (err.code == 'failed-precondition') {
+            // Ocurre si hay multiples pestañas abiertas
+            console.warn("La persistencia solo puede habilitarse en una pestaña a la vez.");
+        } else if (err.code == 'unimplemented') {
+            // El navegador no lo soporta
+            console.warn("El navegador no soporta persistencia offline.");
+        }
+    });
 
-  storage = getStorage(app);
-  auth = getAuth(app);
-  console.log("Firebase inicializado correctamente.");
-} catch (error: any) {
-  console.error("Error CRÍTICO en la inicialización de Firebase:", error);
-  if (error.code === 'app/invalid-configuration-options') {
-    console.error("Revisa que hayas cargado todas las variables de entorno en Vercel (Settings > Environment Variables).");
+    storage = getStorage(app);
+    auth = getAuth(app);
+    console.log("Firebase inicializado correctamente.");
+  } catch (error: any) {
+    console.error("Error CRÍTICO en la inicialización de Firebase:", error);
+    if (error.code === 'app/invalid-configuration-options') {
+      console.error("Revisa que hayas cargado todas las variables de entorno en Vercel (Settings > Environment Variables).");
+    }
   }
 }
 

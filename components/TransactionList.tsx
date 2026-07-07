@@ -135,6 +135,23 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
     }).sort((a, b) => b.date.localeCompare(a.date));
   }, [transactions, filterMode, selectedMonth, dateRange, filterTypeId, searchTerm]);
 
+  const rangeTotals = useMemo(() => {
+    if (filterMode !== 'range') return null;
+    return filteredTransactions.reduce((acc, curr) => {
+      const currCode = curr.currency || 'ARS';
+      if (!acc[currCode]) acc[currCode] = { income: 0, expense: 0, balance: 0 };
+      const type = movementTypes.find(m => m.id === curr.movementTypeId);
+      if (type?.category === MovementCategory.INCOME) {
+        acc[currCode].income += curr.amount;
+        acc[currCode].balance += curr.amount;
+      } else {
+        acc[currCode].expense += curr.amount;
+        acc[currCode].balance -= curr.amount;
+      }
+      return acc;
+    }, {} as Record<string, { income: number; expense: number; balance: number }>);
+  }, [filteredTransactions, filterMode, movementTypes]);
+
   const groupedTransactions = useMemo(() => {
     const groups: Record<string, Transaction[]> = {};
     filteredTransactions.forEach(t => {
@@ -385,6 +402,67 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
              <div className="relative"><Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="text" placeholder="Buscar en detalle..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full h-10 pl-9 pr-3 border border-slate-300 rounded-lg text-sm" /></div>
         </div>
       </div>
+
+      {/* --- TOTALES POR RANGO DE FECHAS --- */}
+      {filterMode === 'range' && rangeTotals && (
+        <div className="bg-slate-50 p-4 border-b border-slate-200 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-center gap-2 mb-3">
+            <Calendar className="w-4 h-4 text-[#1B365D]" />
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Resumen del Rango Seleccionado ({dateRange.start} al {dateRange.end})
+            </span>
+          </div>
+          
+          {Object.keys(rangeTotals).length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.entries(rangeTotals).map(([curr, val]) => {
+                const isPositive = val.balance >= 0;
+                return (
+                  <div key={curr} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-sm font-black text-[#1B365D] bg-slate-100 px-2 py-0.5 rounded">
+                        {curr}
+                      </span>
+                      <span className={`text-xs font-black px-2 py-0.5 rounded ${isPositive ? 'bg-lime-100 text-lime-800' : 'bg-rose-100 text-rose-800'}`}>
+                        {isPositive ? 'Balance Positivo' : 'Déficit'}
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-lime-50/50 border border-lime-100">
+                        <span className="text-[9px] font-bold text-lime-700 uppercase tracking-wider mb-1">Entradas</span>
+                        <div className="flex items-center justify-center gap-0.5 text-lime-600 font-black text-xs sm:text-sm">
+                          <TrendingUp size={12} className="shrink-0" />
+                          <span>$ {val.income.toLocaleString('es-AR')}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-rose-50/50 border border-rose-100">
+                        <span className="text-[9px] font-bold text-rose-700 uppercase tracking-wider mb-1">Salidas</span>
+                        <div className="flex items-center justify-center gap-0.5 text-rose-600 font-black text-xs sm:text-sm">
+                          <TrendingDown size={12} className="shrink-0" />
+                          <span>$ {val.expense.toLocaleString('es-AR')}</span>
+                        </div>
+                      </div>
+
+                      <div className={`flex flex-col items-center justify-center p-2 rounded-lg ${isPositive ? 'bg-blue-50/50 border-blue-100' : 'bg-amber-50/50 border-amber-100'} border`}>
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">Resultado</span>
+                        <div className={`font-black text-xs sm:text-sm ${isPositive ? 'text-[#1B365D]' : 'text-rose-600'}`}>
+                          $ {val.balance.toLocaleString('es-AR')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center p-6 bg-white border border-dashed border-slate-200 rounded-xl text-slate-400 text-sm">
+              No hay movimientos registrados en el rango seleccionado.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm text-slate-600">
