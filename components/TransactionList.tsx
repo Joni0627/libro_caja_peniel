@@ -130,10 +130,43 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, onImpor
     return transactions.filter(t => {
         let dateMatch = filterMode === 'month' ? t.date.startsWith(selectedMonth) : (t.date >= dateRange.start && t.date <= dateRange.end);
         const typeMatch = filterTypeId ? t.movementTypeId === filterTypeId : true;
-        const searchMatch = searchTerm ? t.detail.toLowerCase().includes(searchTerm.toLowerCase()) : true;
+        
+        let searchMatch = true;
+        if (searchTerm) {
+          const term = searchTerm.toLowerCase().trim();
+          
+          const detail = t.detail ? t.detail.toLowerCase() : '';
+          const centerName = getCenterName(t.centerId).toLowerCase();
+          const typeName = getTypeName(t.movementTypeId).toLowerCase();
+          const categoryName = isIncome(t.movementTypeId) ? 'entrada' : 'salida';
+          const categorySynonym = isIncome(t.movementTypeId) ? 'ingreso' : 'egreso';
+          const currency = t.currency ? t.currency.toLowerCase() : '';
+          const date = t.date ? t.date.toLowerCase() : '';
+          
+          const amountStr = t.amount !== undefined && t.amount !== null ? t.amount.toString() : '';
+          const amountLocaleStr = t.amount !== undefined && t.amount !== null ? t.amount.toLocaleString('es-AR') : '';
+          const amountDefaultLocaleStr = t.amount !== undefined && t.amount !== null ? t.amount.toLocaleString() : '';
+          
+          const mType = movementTypes.find(m => m.id === t.movementTypeId);
+          const subCategory = mType?.subCategory ? mType.subCategory.toLowerCase() : '';
+
+          searchMatch = 
+            detail.includes(term) ||
+            centerName.includes(term) ||
+            typeName.includes(term) ||
+            subCategory.includes(term) ||
+            categoryName.includes(term) ||
+            categorySynonym.includes(term) ||
+            currency.includes(term) ||
+            date.includes(term) ||
+            amountStr.includes(term) ||
+            amountLocaleStr.includes(term) ||
+            amountDefaultLocaleStr.includes(term);
+        }
+        
         return dateMatch && typeMatch && searchMatch;
     }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [transactions, filterMode, selectedMonth, dateRange, filterTypeId, searchTerm]);
+  }, [transactions, filterMode, selectedMonth, dateRange, filterTypeId, searchTerm, movementTypes, centers]);
 
   const rangeTotals = useMemo(() => {
     if (filterMode !== 'range') return null;
